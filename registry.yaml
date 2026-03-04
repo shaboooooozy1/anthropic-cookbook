@@ -108,6 +108,7 @@
     research.
   path: claude_agent_sdk/00_The_one_liner_research_agent.ipynb
   authors:
+  - rodrigo-olivares
   - JiriDeJonghe
   date: '2025-09-12'
   categories:
@@ -118,6 +119,7 @@
     plan mode features.
   path: claude_agent_sdk/01_The_chief_of_staff_agent.ipynb
   authors:
+  - rodrigo-olivares
   - JiriDeJonghe
   date: '2025-09-12'
   categories:
@@ -128,8 +130,20 @@
     and CI workflows.
   path: claude_agent_sdk/02_The_observability_agent.ipynb
   authors:
+  - rodrigo-olivares
   - JiriDeJonghe
   date: '2025-09-12'
+  categories:
+  - Claude Agent SDK
+  - Agent Patterns
+- title: The site reliability agent
+  description: Build an incident response agent with read-write MCP tools for autonomous
+    diagnosis, remediation, and post-mortem documentation.
+  path: claude_agent_sdk/03_The_site_reliability_agent.ipynb
+  authors:
+  - benlehrburger-ant
+  - isabella-anthropic
+  date: '2026-02-16'
   categories:
   - Claude Agent SDK
   - Agent Patterns
@@ -248,7 +262,7 @@
   path: misc/session_memory_compaction.ipynb
   authors:
   - jsham042
-  date: '2025-01-16'
+  date: '2026-01-16'
   categories:
   - Agent Patterns
   - Responses
@@ -557,7 +571,7 @@
   categories:
   - Responses
   - Tools
-- title: Memory & context management with Claude Sonnet 4.5
+- title: Memory & context management with Claude Sonnet 4.6
   description: Build AI agents with persistent memory using Claude's memory tool and
     context editing.
   path: tool_use/memory_cookbook.ipynb
