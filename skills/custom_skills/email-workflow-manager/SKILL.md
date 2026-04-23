@@ -50,7 +50,7 @@ Two MCP connectors provide mailbox access. Choose deliberately.
 | Default for all triage, pipeline extraction, and sent audits | **Microsoft 365 MCP** |
 | User explicitly says "Superhuman" | **Superhuman Mail MCP** |
 | Need label/split semantics (labels, splits, unsubscribe actions) | **Superhuman Mail MCP** |
-| M365 returns auth error | Fall back to Superhuman Mail MCP; flag reauth to user |
+| M365 returns auth error | Halt the workflow, surface reauth instructions, and ask the user before any mailbox pivot (see `references/tool-fallback-logic.md`). Never cross mailboxes silently. |
 
 Always use fully-qualified tool names. Prefix every MCP call with the server name.
 
@@ -71,7 +71,7 @@ Daily Triage Progress:
 - [ ] Step 5: Emit Triage Report
 ```
 
-**Step 1 — Pull unread window.** Call `microsoft-365:outlook_email_search` with filters for `isRead=false` and `receivedDateTime >= now-72h`. Default window is 24h; widen to 72h on Mondays or if user says "catch up."
+**Step 1 — Pull unread window.** Call `microsoft-365:outlook_email_search` with `isRead=false` and `receivedDateTime >= now-24h` by default. Widen the filter to `now-72h` only on Mondays or when the user says "catch up" / "widen the window."
 
 **Step 2 — Classify each message.** For each message, apply the tier rules in `references/triage-tier-definitions.md`. Every message resolves to exactly one of: HIGH, MEDIUM, LOW, NOISE. Use `references/hub-internal-senders.md` to recognize internal HUB traffic.
 
@@ -92,7 +92,7 @@ Produce one row per active pipeline item. Fields, in order:
 5. **Recommended next action** — one verb, one object
 6. **Urgency** — HIGH / MEDIUM / LOW
 
-Pull thread context with `microsoft-365:outlook_email_search` using subject + sender. If touchpoint date is ambiguous, also call `superhuman-mail:get_thread` for the same thread ID. Cross-check against HubSpot with `hubspot:search_contacts` only when the contact is not obvious from the header.
+Pull thread context from the active mailbox only. When M365 is the active source, use `microsoft-365:outlook_email_search` by subject + sender and, if needed, a follow-up search narrowed by `conversationId`. When Superhuman is the active source, use `superhuman-mail:get_thread` by thread ID. Do not cross providers mid-workflow — a cross-provider pull can return a divergent thread history and corrupt the last-touch date. If the active provider genuinely lacks the thread, ask the user before pivoting. Cross-check against HubSpot with `hubspot:search_contacts` only when the contact is not obvious from the header.
 
 ### Workflow 3 — Follow-Up Flagging
 
