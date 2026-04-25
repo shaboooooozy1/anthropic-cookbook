@@ -1,11 +1,11 @@
 # Claude Cookbooks
 
-A collection of Jupyter notebooks and Python examples for building with the Claude API.
+A collection of Jupyter notebooks and Python examples for building with the Claude API and the Claude Agent SDK.
 
 ## Quick Start
 
 ```bash
-# Install dependencies
+# Install dependencies (Python 3.11 or 3.12 required)
 uv sync --all-extras
 
 # Install pre-commit hooks
@@ -19,92 +19,144 @@ cp .env.example .env
 ## Development Commands
 
 ```bash
-make format        # Format code with ruff
-make lint          # Run linting
-make check         # Run format-check + lint
-make fix           # Auto-fix issues + format
-make test          # Run pytest
+make format               # Format code with ruff
+make lint                 # Run linting
+make check                # format-check + lint (run before committing)
+make fix                  # Auto-fix issues + format
+make test                 # Run pytest
+
+# Notebook testing
+make test-notebooks       # Structure tests (fast, no API calls)
+make test-notebooks-exec  # Execution tests (slow, requires API key)
+make test-notebooks-tox   # Run in isolated tox environment
+make test-notebooks-quick # Quick validation without pytest
+
+# Target a single notebook or directory
+make test-notebooks NOTEBOOK=tool_use/calculator_tool.ipynb
+make test-notebooks NOTEBOOK_DIR=capabilities
+
+make sort-authors         # Sort authors.yaml alphabetically
+make clean                # Remove cache files
 ```
 
-Or directly with uv:
-
-```bash
-uv run ruff format .           # Format
-uv run ruff check .            # Lint
-uv run ruff check --fix .      # Auto-fix
-uv run pre-commit run --all-files
-```
+Direct `uv` equivalents work too: `uv run ruff format .`, `uv run ruff check --fix .`, `uv run pre-commit run --all-files`.
 
 ## Code Style
 
 - **Line length:** 100 characters
 - **Quotes:** Double quotes
-- **Formatter:** Ruff
-
-Notebooks have relaxed rules for mid-file imports (E402), redefinitions (F811), and variable naming (N803, N806).
+- **Formatter / linter:** Ruff (rules `E, F, I, W, UP, S, B`; see `pyproject.toml`)
+- **Notebooks** have relaxed rules for mid-file imports (E402), redefinitions (F811), and variable naming (N803, N806).
 
 ## Git Workflow
 
-**Branch naming:** `<username>/<feature-description>`
+**Branch naming:** `<username>/<feature-description>` (e.g., `alice/add-rag-example`)
 
-**Commit format (conventional commits):**
+**Conventional commits:**
 ```
 feat(scope): add new feature
 fix(scope): fix bug
 docs(scope): update documentation
 style: lint/format
+refactor: code restructuring
+test: tests
+chore: maintenance
+ci: CI/CD changes
 ```
 
 ## Key Rules
 
-1. **API Keys:** Never commit `.env` files. Always use `os.environ.get("ANTHROPIC_API_KEY")`
+1. **API keys:** Never commit `.env` files. Always read with `os.environ.get("ANTHROPIC_API_KEY")`.
 
-2. **Dependencies:** Use `uv add <package>` or `uv add --dev <package>`. Never edit pyproject.toml directly.
+2. **Dependencies:** Use `uv add <package>` or `uv add --dev <package>`. Don't edit `pyproject.toml` directly.
 
-3. **Models:** Use current Claude models. Check docs.anthropic.com for latest versions.
+3. **Models — use current Claude models, not dated IDs:**
    - Sonnet: `claude-sonnet-4-6`
    - Haiku: `claude-haiku-4-5`
    - Opus: `claude-opus-4-6`
-   - **Never use dated model IDs** (e.g., `claude-sonnet-4-6-20250514`). Always use the non-dated alias.
-   - **Bedrock model IDs** follow a different format. Use the base Bedrock model ID from the docs:
+   - **Never** use dated IDs like `claude-sonnet-4-6-20250514`. Always use the non-dated alias.
+   - **Bedrock** uses different IDs:
      - Opus 4.6: `anthropic.claude-opus-4-6-v1`
      - Sonnet 4.5: `anthropic.claude-sonnet-4-5-20250929-v1:0`
      - Haiku 4.5: `anthropic.claude-haiku-4-5-20251001-v1:0`
      - Prepend `global.` for global endpoints (recommended): `global.anthropic.claude-opus-4-6-v1`
-     - Note: Bedrock models before Opus 4.6 require dated IDs in their Bedrock model ID.
+     - Bedrock models prior to Opus 4.6 require dated IDs.
 
 4. **Notebooks:**
-   - Keep outputs in notebooks (intentional for demonstration)
-   - One concept per notebook
-   - Test that notebooks run top-to-bottom without errors
+   - **Keep outputs** — they demonstrate expected results and are intentionally checked in.
+   - One concept per notebook; clear narrative markdown cells.
+   - Must run top-to-bottom without errors.
+   - Use minimal tokens for examples to keep costs low.
 
-5. **Quality checks:** Run `make check` before committing. Pre-commit hooks validate formatting and notebook structure.
+5. **Quality checks:** Run `make check` before committing. Pre-commit hooks run ruff + notebook structure validation + authors-sorted check.
 
 ## Slash Commands
 
-These commands are available in Claude Code and CI:
+Defined in `.claude/commands/` and used both in Claude Code locally and in CI:
 
-- `/notebook-review` - Review notebook quality
-- `/model-check` - Validate Claude model references
-- `/link-review` - Check links in changed files
+- `/notebook-review` — Comprehensive notebook quality check
+- `/model-check` — Validate Claude model references are current
+- `/link-review` — Validate links in markdown and notebooks
+- `/add-registry` — Add a new notebook entry to `registry.yaml`
+- `/review-pr` — Review an open pull request
+- `/review-pr-ci` — Review a PR and post the review (CI/automated use)
+- `/review-issue` — Review and respond to a GitHub issue
+
+## Subagents and Skills
+
+- **`.claude/agents/code-reviewer.md`** — Subagent for reviewing notebook/script changes (Python/Jupyter best practices and project standards). Use proactively after significant code changes.
+- **`.claude/skills/cookbook-audit/`** — Skill for auditing a notebook against the cookbook rubric. Has its own `SKILL.md`, `style_guide.md`, and `validate_notebook.py`.
+- **`skills/CLAUDE.md`** — Detailed Claude Code guide for the Skills (document generation) cookbook, including beta-API gotchas for the Files API and `client.beta.*` namespace.
 
 ## Project Structure
 
 ```
-capabilities/      # Core Claude capabilities (RAG, classification, etc.)
-skills/            # Advanced skill-based notebooks
-tool_use/          # Tool use and integration patterns
-multimodal/        # Vision and image processing
-misc/              # Batch processing, caching, utilities
-third_party/       # Pinecone, Voyage, Wikipedia integrations
-extended_thinking/ # Extended reasoning patterns
-scripts/           # Validation scripts
-.claude/           # Claude Code commands and skills
+capabilities/         # Core Claude capabilities: classification, RAG, summarization,
+                      #   contextual-embeddings, text-to-sql (each has guide.ipynb +
+                      #   data/ + evaluation/)
+claude_agent_sdk/     # Tutorial series for the Claude Agent SDK (research,
+                      #   chief-of-staff, observability, SRE agents)
+coding/               # Coding-focused notebooks (e.g., frontend aesthetics)
+extended_thinking/    # Extended reasoning patterns
+finetuning/           # Fine-tuning examples (e.g., on Bedrock)
+misc/                 # Batch processing, prompt caching, evals, JSON mode,
+                      #   citations, PDF, session memory compaction, etc.
+multimodal/           # Vision, charts/PPT, transcription, sub-agents, crop tool
+observability/        # Usage / Cost API examples
+patterns/agents/      # Agent design patterns (basic workflows, evaluator-optimizer,
+                      #   orchestrator-workers)
+skills/               # Skills feature for document generation (xlsx/pptx/pdf/docx)
+third_party/          # Integrations: Pinecone, VoyageAI, Wikipedia, MongoDB,
+                      #   LlamaIndex, Deepgram, ElevenLabs, WolframAlpha
+tool_use/             # Tool use patterns: parallel, choice, structured JSON, memory,
+                      #   tool search w/ embeddings, programmatic tool calling, vision
+tool_evaluation/      # Tool evaluation framework example
+tests/notebook_tests/ # pytest-based notebook structure + execution tests
+scripts/              # Validation scripts (validate_notebooks.py, test_notebooks.py,
+                      #   validate_authors_sorted.py, detect-secrets/)
+.claude/              # Slash commands, subagents, skills for Claude Code + CI
+.github/workflows/    # CI: lint-format, notebook-tests, notebook-quality,
+                      #   notebook-diff-comment, links, verify-authors, claude-pr-review,
+                      #   claude-model-check, claude-link-review
+registry.yaml         # Catalog of notebooks (title, path, authors, categories, date)
+authors.yaml          # Contributor metadata (kept sorted; enforced by hook)
 ```
 
 ## Adding a New Cookbook
 
-1. Create notebook in the appropriate directory
-2. Add entry to `registry.yaml` with title, description, path, authors, categories
-3. Add author info to `authors.yaml` if new contributor
-4. Run quality checks and submit PR
+1. Create the notebook in the appropriate top-level directory.
+2. Add an entry to `registry.yaml` with `title`, `description`, `path`, `authors`, `categories`, `date`. (Use `/add-registry` to scaffold.)
+3. Add author info to `authors.yaml` if you're a new contributor (`make sort-authors` keeps it sorted).
+4. Run `make check` and `make test-notebooks` to validate.
+5. Open a PR — CI will run lint, notebook structure tests, model check, link check, and Claude review.
+
+## CI Overview
+
+PRs trigger:
+- `lint-format.yml` — ruff format + lint on changed Python/notebooks
+- `notebook-tests.yml` — pytest structure tests against changed notebooks
+- `notebook-quality.yml` + `notebook-diff-comment.yml` — Claude-driven review on diffs
+- `verify-authors.yml` — authors.yaml sorted + registry author references valid
+- `links.yml` / `claude-link-review.yml` — link validation
+- `claude-model-check.yml` — confirm model IDs match current aliases
+- `claude-pr-review.yml` — overall Claude review
