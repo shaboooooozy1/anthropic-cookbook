@@ -106,7 +106,8 @@ Defined in `.claude/commands/` and used both in Claude Code locally and in CI:
 
 - **`.claude/agents/code-reviewer.md`** — Subagent for reviewing notebook/script changes (Python/Jupyter best practices and project standards). Use proactively after significant code changes.
 - **`.claude/skills/cookbook-audit/`** — Skill for auditing a notebook against the cookbook rubric. Has its own `SKILL.md`, `style_guide.md`, and `validate_notebook.py`.
-- **`skills/CLAUDE.md`** — Detailed Claude Code guide for the Skills (document generation) cookbook, including beta-API gotchas for the Files API and `client.beta.*` namespace.
+- **`skills/CLAUDE.md`** — Nested Claude Code guide for the Skills (document generation) cookbook, including beta-API gotchas for the Files API and `client.beta.*` namespace. Read it before editing anything under `skills/`.
+- **`skills/custom_skills/`** — Demonstration skills shipped with the Skills cookbook: `analyzing-financial-statements`, `applying-brand-guidelines`, `creating-financial-models`, `email-workflow-manager`. Each has its own `SKILL.md`.
 
 ## Project Structure
 
@@ -123,23 +124,29 @@ misc/                 # Batch processing, prompt caching, evals, JSON mode,
                       #   citations, PDF, session memory compaction, etc.
 multimodal/           # Vision, charts/PPT, transcription, sub-agents, crop tool
 observability/        # Usage / Cost API examples
-patterns/agents/      # Agent design patterns (basic workflows, evaluator-optimizer,
-                      #   orchestrator-workers)
+patterns/agents/      # Agent design patterns: basic_workflows.ipynb,
+                      #   evaluator_optimizer.ipynb, orchestrator_workers.ipynb (+ prompts/)
 skills/               # Skills feature for document generation (xlsx/pptx/pdf/docx)
 third_party/          # Integrations: Pinecone, VoyageAI, Wikipedia, MongoDB,
                       #   LlamaIndex, Deepgram, ElevenLabs, WolframAlpha
 tool_use/             # Tool use patterns: parallel, choice, structured JSON, memory,
                       #   tool search w/ embeddings, programmatic tool calling, vision
 tool_evaluation/      # Tool evaluation framework example
-tests/notebook_tests/ # pytest-based notebook structure + execution tests
-scripts/              # Validation scripts (validate_notebooks.py, test_notebooks.py,
-                      #   validate_authors_sorted.py, detect-secrets/)
+tests/                # Repo-wide pytest tests (conftest.py + notebook_tests/)
+tests/notebook_tests/ # Notebook structure + execution tests (nbval/nbconvert based)
+scripts/              # Validation scripts (validate_notebooks.py, validate_all_notebooks.py,
+                      #   test_notebooks.py, validate_authors_sorted.py, detect-secrets/)
 .claude/              # Slash commands, subagents, skills for Claude Code + CI
 .github/workflows/    # CI: lint-format, notebook-tests, notebook-quality,
                       #   notebook-diff-comment, links, verify-authors, claude-pr-review,
                       #   claude-model-check, claude-link-review
 registry.yaml         # Catalog of notebooks (title, path, authors, categories, date)
 authors.yaml          # Contributor metadata (kept sorted; enforced by hook)
+pyproject.toml        # Project deps + ruff/pytest config (do not edit directly — use uv)
+uv.toml / uv.lock     # uv resolver settings + lockfile
+tox.ini               # Isolated tox envs for notebook testing (used by test-notebooks-tox)
+lychee.toml           # Link-checker config (used by links.yml CI)
+.pre-commit-config.yaml  # Pre-commit hooks: ruff, notebook validation, authors-sorted
 ```
 
 ## Adding a New Cookbook
