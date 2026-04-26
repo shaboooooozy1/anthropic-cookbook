@@ -266,6 +266,16 @@
   categories:
   - Agent Patterns
   - Responses
+- title: 'Persistent sessions: save, resume, and branch conversations'
+  description: Serialize Claude conversations to disk, resume them in a new process,
+    and fork checkpoints to let users explore alternate branches.
+  path: misc/persistent_sessions.ipynb
+  authors:
+  - Anthropic
+  date: '2026-04-24'
+  categories:
+  - Agent Patterns
+  - Responses
 - title: Summarizing web page content with Claude 3 Haiku
   description: Fetch and summarize web page content using Claude 3 Haiku via URL extraction.
   path: misc/read_web_pages_with_haiku.ipynb
