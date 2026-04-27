@@ -132,7 +132,8 @@ tool_use/             # Tool use patterns: parallel, choice, structured JSON, me
                       #   tool search w/ embeddings, programmatic tool calling, vision
 tool_evaluation/      # Tool evaluation framework example
 tests/notebook_tests/ # pytest-based notebook structure + execution tests
-scripts/              # Validation scripts (validate_notebooks.py, test_notebooks.py,
+scripts/              # Validation scripts (validate_notebooks.py,
+                      #   validate_all_notebooks.py, test_notebooks.py,
                       #   validate_authors_sorted.py, detect-secrets/)
 .claude/              # Slash commands, subagents, skills for Claude Code + CI
 .github/workflows/    # CI: lint-format, notebook-tests, notebook-quality,
@@ -140,6 +141,9 @@ scripts/              # Validation scripts (validate_notebooks.py, test_notebook
                       #   claude-model-check, claude-link-review
 registry.yaml         # Catalog of notebooks (title, path, authors, categories, date)
 authors.yaml          # Contributor metadata (kept sorted; enforced by hook)
+tox.ini               # Isolated test envs (`structure`, `structure-single`,
+                      #   `execution`) used by `make test-notebooks-tox`
+pyproject.toml        # Project deps + ruff/pytest config (Python 3.11 / 3.12)
 ```
 
 ## Adding a New Cookbook
