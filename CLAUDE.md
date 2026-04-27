@@ -107,13 +107,14 @@ Defined in `.claude/commands/` and used both in Claude Code locally and in CI:
 - **`.claude/agents/code-reviewer.md`** — Subagent for reviewing notebook/script changes (Python/Jupyter best practices and project standards). Use proactively after significant code changes.
 - **`.claude/skills/cookbook-audit/`** — Skill for auditing a notebook against the cookbook rubric. Has its own `SKILL.md`, `style_guide.md`, and `validate_notebook.py`.
 - **`skills/CLAUDE.md`** — Detailed Claude Code guide for the Skills (document generation) cookbook, including beta-API gotchas for the Files API and `client.beta.*` namespace.
+- **`claude_agent_sdk/chief_of_staff_agent/CLAUDE.md`** — Sub-guide for the Chief-of-Staff agent tutorial. Read it before editing files in that subdirectory.
 
 ## Project Structure
 
 ```
-capabilities/         # Core Claude capabilities: classification, RAG, summarization,
-                      #   contextual-embeddings, text-to-sql (each has guide.ipynb +
-                      #   data/ + evaluation/)
+capabilities/         # Core Claude capabilities: classification, retrieval_augmented_generation,
+                      #   summarization, contextual-embeddings, text_to_sql (each has guide.ipynb
+                      #   + data/ + evaluation/)
 claude_agent_sdk/     # Tutorial series for the Claude Agent SDK (research,
                       #   chief-of-staff, observability, SRE agents)
 coding/               # Coding-focused notebooks (e.g., frontend aesthetics)
