@@ -16,6 +16,10 @@ cp .env.example .env
 # Edit .env and add your ANTHROPIC_API_KEY
 ```
 
+See `CONTRIBUTING.md` for the full contributor walkthrough (uv install, pip alternative, troubleshooting).
+
+`.env.example` also exposes optional knobs: `CLAUDE_MODEL` (default model used by some notebooks for cost control, e.g. `claude-haiku-4-5`), `TEST_MODE`, `MAX_TOKENS`, `DEBUG`.
+
 ## Development Commands
 
 ```bash
@@ -88,7 +92,7 @@ ci: CI/CD changes
    - Must run top-to-bottom without errors.
    - Use minimal tokens for examples to keep costs low.
 
-5. **Quality checks:** Run `make check` before committing. Pre-commit hooks run ruff + notebook structure validation + authors-sorted check.
+5. **Quality checks:** Run `make check` before committing. Pre-commit hooks (`.pre-commit-config.yaml`) run `ruff-check --fix`, `ruff-format`, `scripts/validate_notebooks.py` on changed `.ipynb` files, and `scripts/validate_authors_sorted.py --fix` on `authors.yaml`.
 
 ## Slash Commands
 
@@ -141,9 +145,14 @@ scripts/              # Validation scripts (validate_notebooks.py,
                       #   claude-model-check, claude-link-review
 registry.yaml         # Catalog of notebooks (title, path, authors, categories, date)
 authors.yaml          # Contributor metadata (kept sorted; enforced by hook)
-tox.ini               # Isolated test envs (`structure`, `structure-single`,
-                      #   `execution`) used by `make test-notebooks-tox`
+tox.ini               # Isolated test envs: `structure`, `structure-single`,
+                      #   `execution`, `execution-single`, `registry`, `quick`,
+                      #   `third-party`, `lint`, `format` (used by
+                      #   `make test-notebooks-tox` and CI)
 pyproject.toml        # Project deps + ruff/pytest config (Python 3.11 / 3.12)
+lychee.toml           # Link-checker config (timeouts, retries, ignore patterns)
+                      #   used by `links.yml` / `claude-link-review.yml`
+CONTRIBUTING.md       # Contributor walkthrough (setup, style, PR checklist)
 ```
 
 ## Adding a New Cookbook
