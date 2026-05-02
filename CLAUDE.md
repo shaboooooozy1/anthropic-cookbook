@@ -23,6 +23,7 @@ See `CONTRIBUTING.md` for the full contributor walkthrough (uv install, pip alte
 ## Development Commands
 
 ```bash
+make install              # uv sync --all-extras
 make format               # Format code with ruff
 make lint                 # Run linting
 make check                # format-check + lint (run before committing)
@@ -129,16 +130,25 @@ multimodal/           # Vision, charts/PPT, transcription, sub-agents, crop tool
 observability/        # Usage / Cost API examples
 patterns/agents/      # Agent design patterns (basic workflows, evaluator-optimizer,
                       #   orchestrator-workers)
-skills/               # Skills feature for document generation (xlsx/pptx/pdf/docx)
+skills/               # Skills for document generation (xlsx/pptx/pdf/docx).
+                      #   Contains skills/notebooks/ (intro + financial + custom-dev
+                      #   walkthroughs), skills/custom_skills/ (analyzing-financial-
+                      #   statements, applying-brand-guidelines, creating-financial-
+                      #   models, email-workflow-manager), skills/CLAUDE.md (beta-API
+                      #   guide), and shared file_utils.py / skill_utils.py helpers.
 third_party/          # Integrations: Pinecone, VoyageAI, Wikipedia, MongoDB,
                       #   LlamaIndex, Deepgram, ElevenLabs, WolframAlpha
 tool_use/             # Tool use patterns: parallel, choice, structured JSON, memory,
                       #   tool search w/ embeddings, programmatic tool calling, vision
 tool_evaluation/      # Tool evaluation framework example
 tests/notebook_tests/ # pytest-based notebook structure + execution tests
+                      #   (conftest.py, test_notebooks.py, utils.py)
 scripts/              # Validation scripts (validate_notebooks.py,
                       #   validate_all_notebooks.py, test_notebooks.py,
                       #   validate_authors_sorted.py, detect-secrets/)
+anthropic_cookbook/   # Empty stub package — exists only so hatchling can build
+                      #   a wheel from pyproject.toml; no runtime code lives here.
+images/               # Static images embedded by notebooks and READMEs.
 .claude/              # Slash commands, subagents, skills for Claude Code + CI
 .github/workflows/    # CI: lint-format, notebook-tests, notebook-quality,
                       #   notebook-diff-comment, links, verify-authors, claude-pr-review,
