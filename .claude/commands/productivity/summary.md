@@ -15,7 +15,7 @@ Read the active session and display a formatted summary.
    ```
    If not found, tell the user there is no active session and stop.
 
-2. **Calculate elapsed time** from `started_at` to now. Express as `Xh Ym` if ≥60 min, `Xm Ys` if <60 min.
+2. **Calculate elapsed time** from `started_at` to now. Express as `Xh Ym` if ≥60 min, `Xm` if ≥1 min but <60 min, `Xs` if <1 min. Always truncate (do not round) partial units.
 
 3. **Print summary** inside a fenced code block to preserve alignment:
    ```
@@ -35,7 +35,7 @@ Read the active session and display a formatted summary.
      15:02  Write unit tests
    ```
 
-4. **Omit empty sections:** skip Goals if none were set; skip Tasks if none logged; omit Turns line if `turns` is 0.
+4. **Omit empty sections:** skip Goals if none were set; skip Tasks if none logged; omit Turns line if `turns` is 0 (i.e., no Stop events have fired yet).
 
 ## Notes
 

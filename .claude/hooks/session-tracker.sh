@@ -8,8 +8,11 @@ python3 - "$SESSION_FILE" <<'EOF'
 import json, sys
 
 path = sys.argv[1]
-with open(path) as f:
-    data = json.load(f)
+try:
+    with open(path) as f:
+        data = json.load(f)
+except (json.JSONDecodeError, OSError):
+    sys.exit(0)
 
 data["turns"] = data.get("turns", 0) + 1
 
