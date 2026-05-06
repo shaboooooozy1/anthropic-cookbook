@@ -53,6 +53,9 @@ def check_url(url):
 
     try:
         response = requests.head(url, timeout=10, allow_redirects=True)
+        # Some servers don't support HEAD; fall back to GET
+        if response.status_code == 405:
+            response = requests.get(url, timeout=10, allow_redirects=True)
         if response.status_code >= 400:
             return False, f"HTTP {response.status_code}"
         return True, None
