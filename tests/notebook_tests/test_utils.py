@@ -106,6 +106,16 @@ def test_validate_all_cells_executed_ignores_empty_code_and_non_code_cells() -> 
     assert utils.validate_all_cells_executed(cells) == ["Cell 0: Code cell has not been executed"]
 
 
+def test_validate_all_cells_executed_accepts_executed_code_cells() -> None:
+    cells = [
+        _cell(0, execution_count=1),
+        _cell(1, execution_count=2),
+        _cell(2, cell_type="markdown", source="notes", execution_count=None),
+    ]
+
+    assert utils.validate_all_cells_executed(cells) == []
+
+
 def test_validate_no_error_outputs_includes_error_details() -> None:
     cells = [
         _cell(
@@ -234,7 +244,7 @@ def test_find_all_notebooks_sorts_results_and_applies_excludes(tmp_path: Path) -
     assert notebooks == [first, second]
 
 
-def test_execute_notebook_builds_command(monkeypatch, tmp_path: Path) -> None:
+def test_execute_notebook_success_with_options(monkeypatch, tmp_path: Path) -> None:
     notebook_path = tmp_path / "example.ipynb"
     notebook_path.write_text("{}", encoding="utf-8")
     calls = []
