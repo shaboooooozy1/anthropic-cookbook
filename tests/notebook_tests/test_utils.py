@@ -10,6 +10,7 @@ from tests.notebook_tests import utils
 from tests.notebook_tests.utils import CellInfo
 
 SUBPROCESS_TIMEOUT_BUFFER = 30
+NOTEBOOK_TIMEOUT = 5
 
 
 def _cell(
@@ -244,7 +245,7 @@ def test_find_all_notebooks_sorts_results_and_applies_excludes(tmp_path: Path) -
     assert notebooks == [first, second]
 
 
-def test_execute_notebook_success_with_options(monkeypatch, tmp_path: Path) -> None:
+def test_execute_notebook_with_timeout_and_kernel(monkeypatch, tmp_path: Path) -> None:
     notebook_path = tmp_path / "example.ipynb"
     notebook_path.write_text("{}", encoding="utf-8")
     calls = []
@@ -257,7 +258,7 @@ def test_execute_notebook_success_with_options(monkeypatch, tmp_path: Path) -> N
 
     success, message, output_path = utils.execute_notebook(
         notebook_path,
-        timeout=5,
+        timeout=NOTEBOOK_TIMEOUT,
         kernel_name="python3",
         allow_errors=True,
     )
@@ -268,7 +269,7 @@ def test_execute_notebook_success_with_options(monkeypatch, tmp_path: Path) -> N
     assert "--allow-errors" in calls[0][0]
     assert "--ExecutePreprocessor.kernel_name=python3" in calls[0][0]
     assert calls[0][0][-1] == str(notebook_path)
-    expected_subprocess_timeout = 5 + SUBPROCESS_TIMEOUT_BUFFER
+    expected_subprocess_timeout = NOTEBOOK_TIMEOUT + SUBPROCESS_TIMEOUT_BUFFER
     assert calls[0][1]["timeout"] == expected_subprocess_timeout
     output_path.unlink()
 
