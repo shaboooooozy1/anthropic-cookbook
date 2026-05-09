@@ -9,7 +9,6 @@ from pathlib import Path
 from tests.notebook_tests import utils
 from tests.notebook_tests.utils import CellInfo
 
-SUBPROCESS_TIMEOUT_BUFFER = 30
 NOTEBOOK_TIMEOUT = 5
 
 
@@ -267,10 +266,10 @@ def test_execute_notebook_with_timeout_and_kernel(monkeypatch, tmp_path: Path) -
     assert message == "Notebook executed successfully"
     assert output_path is not None
     assert "--allow-errors" in calls[0][0]
+    assert "--ExecutePreprocessor.timeout=5" in calls[0][0]
     assert "--ExecutePreprocessor.kernel_name=python3" in calls[0][0]
     assert calls[0][0][-1] == str(notebook_path)
-    expected_subprocess_timeout = NOTEBOOK_TIMEOUT + SUBPROCESS_TIMEOUT_BUFFER
-    assert calls[0][1]["timeout"] == expected_subprocess_timeout
+    assert calls[0][1]["timeout"] == 35  # Notebook timeout plus subprocess startup buffer.
     output_path.unlink()
 
 
