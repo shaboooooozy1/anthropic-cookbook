@@ -44,7 +44,7 @@ def _write_notebook(path: Path, cells: list[dict]) -> None:
                         "display_name": "Python 3",
                         "language": "python",
                     },
-                    "language_info": {"name": "python", "version": "3.11.0"},
+                    "language_info": {"name": "python", "version": "3.12.0"},
                 },
                 "nbformat": 4,
                 "nbformat_minor": 5,
@@ -273,7 +273,7 @@ def test_execute_notebook_with_timeout_and_kernel(
     assert "--ExecutePreprocessor.timeout=5" in calls[0][0]
     assert "--ExecutePreprocessor.kernel_name=python3" in calls[0][0]
     assert calls[0][0][-1] == str(notebook_path)
-    assert calls[0][1]["timeout"] == 35  # Notebook timeout plus subprocess startup buffer.
+    assert calls[0][1]["timeout"] == 35  # NOTEBOOK_TIMEOUT (5s) + 30s startup buffer.
     output_path.unlink()
 
 
