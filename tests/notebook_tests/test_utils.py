@@ -134,7 +134,7 @@ def test_validate_no_empty_cells_reports_all_empty_cell_types() -> None:
 def test_validate_no_hardcoded_secrets_detects_keys_and_env_assignments() -> None:
     cells = [
         _cell(0, source='api_key = "sk-ant-not-a-real-key"'),
-        _cell(1, source='os.environ["ANTHROPIC_API_KEY"] = "not-a-real-secret"'),
+        _cell(1, source='{"ANTHROPIC_API_KEY": "not-a-real-secret"}'),
         _cell(2, cell_type="markdown", source="sk-ant-doc-example", execution_count=None),
     ]
 
