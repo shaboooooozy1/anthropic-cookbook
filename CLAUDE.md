@@ -139,6 +139,7 @@ tests/notebook_tests/ # pytest-based notebook structure + execution tests
 scripts/              # Validation scripts (validate_notebooks.py,
                       #   validate_all_notebooks.py, test_notebooks.py,
                       #   validate_authors_sorted.py, detect-secrets/)
+anthropic_cookbook/   # Minimal Python package marker (currently just __init__.py)
 .claude/              # Slash commands, subagents, skills for Claude Code + CI
 .github/workflows/    # CI: lint-format, notebook-tests, notebook-quality,
                       #   notebook-diff-comment, links, verify-authors, claude-pr-review,
@@ -150,6 +151,8 @@ tox.ini               # Isolated test envs: `structure`, `structure-single`,
                       #   `third-party`, `lint`, `format` (used by
                       #   `make test-notebooks-tox` and CI)
 pyproject.toml        # Project deps + ruff/pytest config (Python 3.11 / 3.12)
+uv.toml / uv.lock     # uv resolver config + locked dependency graph
+requirements-dev.txt  # pip alternative to `uv sync` (see CONTRIBUTING.md)
 lychee.toml           # Link-checker config (timeouts, retries, ignore patterns)
                       #   used by `links.yml` / `claude-link-review.yml`
 CONTRIBUTING.md       # Contributor walkthrough (setup, style, PR checklist)
