@@ -232,7 +232,7 @@ def test_find_all_notebooks_sorts_results_and_applies_excludes(tmp_path: Path) -
     assert notebooks == [first, second]
 
 
-def test_execute_notebook_success_builds_expected_command(monkeypatch, tmp_path: Path) -> None:
+def test_execute_notebook_builds_command(monkeypatch, tmp_path: Path) -> None:
     notebook_path = tmp_path / "example.ipynb"
     notebook_path.write_text("{}", encoding="utf-8")
     calls = []
@@ -256,7 +256,8 @@ def test_execute_notebook_success_builds_expected_command(monkeypatch, tmp_path:
     assert "--allow-errors" in calls[0][0]
     assert "--ExecutePreprocessor.kernel_name=python3" in calls[0][0]
     assert calls[0][0][-1] == str(notebook_path)
-    assert calls[0][1]["timeout"] == 35
+    expected_subprocess_timeout = 5 + 30
+    assert calls[0][1]["timeout"] == expected_subprocess_timeout
     output_path.unlink()
 
 
