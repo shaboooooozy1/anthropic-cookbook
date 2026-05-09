@@ -101,9 +101,7 @@ def test_validate_all_cells_executed_ignores_empty_code_and_non_code_cells() -> 
         _cell(2, cell_type="markdown", source="notes", execution_count=None),
     ]
 
-    assert utils.validate_all_cells_executed(cells) == [
-        "Cell 0: Code cell has not been executed"
-    ]
+    assert utils.validate_all_cells_executed(cells) == ["Cell 0: Code cell has not been executed"]
 
 
 def test_validate_no_error_outputs_includes_error_details() -> None:
@@ -114,9 +112,7 @@ def test_validate_no_error_outputs_includes_error_details() -> None:
         )
     ]
 
-    assert utils.validate_no_error_outputs(cells) == [
-        "Cell 0: Error output - RuntimeError: boom"
-    ]
+    assert utils.validate_no_error_outputs(cells) == ["Cell 0: Error output - RuntimeError: boom"]
 
 
 def test_validate_no_empty_cells_reports_all_empty_cell_types() -> None:
@@ -149,8 +145,7 @@ def test_extract_pip_dependencies_handles_flags_versions_and_extras() -> None:
         _cell(
             0,
             source=(
-                "%pip install -q anthropic>=0.71 pandas[excel]==2.0\n"
-                "!pip install --quiet rich"
+                "%pip install -q anthropic>=0.71 pandas[excel]==2.0\n!pip install --quiet rich"
             ),
         )
     ]
