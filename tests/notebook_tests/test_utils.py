@@ -6,6 +6,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from tests.notebook_tests import utils
 from tests.notebook_tests.utils import CellInfo
 
@@ -244,7 +246,9 @@ def test_find_all_notebooks_sorts_results_and_applies_excludes(tmp_path: Path) -
     assert notebooks == [first, second]
 
 
-def test_execute_notebook_with_timeout_and_kernel(monkeypatch, tmp_path: Path) -> None:
+def test_execute_notebook_with_timeout_and_kernel(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     notebook_path = tmp_path / "example.ipynb"
     notebook_path.write_text("{}", encoding="utf-8")
     calls = []
@@ -273,7 +277,7 @@ def test_execute_notebook_with_timeout_and_kernel(monkeypatch, tmp_path: Path) -
     output_path.unlink()
 
 
-def test_execute_notebook_reports_failure(monkeypatch, tmp_path: Path) -> None:
+def test_execute_notebook_reports_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     notebook_path = tmp_path / "example.ipynb"
     notebook_path.write_text("{}", encoding="utf-8")
 
@@ -290,7 +294,7 @@ def test_execute_notebook_reports_failure(monkeypatch, tmp_path: Path) -> None:
     output_path.unlink()
 
 
-def test_execute_notebook_reports_timeout(monkeypatch, tmp_path: Path) -> None:
+def test_execute_notebook_reports_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     notebook_path = tmp_path / "example.ipynb"
     notebook_path.write_text("{}", encoding="utf-8")
 
