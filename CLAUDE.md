@@ -23,6 +23,8 @@ See `CONTRIBUTING.md` for the full contributor walkthrough (uv install, pip alte
 ## Development Commands
 
 ```bash
+make help                 # List all targets (default)
+make install              # uv sync --all-extras
 make format               # Format code with ruff
 make lint                 # Run linting
 make check                # format-check + lint (run before committing)
@@ -119,7 +121,8 @@ capabilities/         # Core Claude capabilities: classification, RAG, summariza
                       #   contextual-embeddings, text-to-sql (each has guide.ipynb +
                       #   data/ + evaluation/)
 claude_agent_sdk/     # Tutorial series for the Claude Agent SDK (research,
-                      #   chief-of-staff, observability, SRE agents)
+                      #   chief-of-staff, observability, SRE agents). Has its own
+                      #   pyproject.toml for SDK-specific deps.
 coding/               # Coding-focused notebooks (e.g., frontend aesthetics)
 extended_thinking/    # Extended reasoning patterns
 finetuning/           # Fine-tuning examples (e.g., on Bedrock)
@@ -129,16 +132,21 @@ multimodal/           # Vision, charts/PPT, transcription, sub-agents, crop tool
 observability/        # Usage / Cost API examples
 patterns/agents/      # Agent design patterns (basic workflows, evaluator-optimizer,
                       #   orchestrator-workers)
-skills/               # Skills feature for document generation (xlsx/pptx/pdf/docx)
+skills/               # Skills feature for document generation (xlsx/pptx/pdf/docx).
+                      #   See skills/CLAUDE.md for beta-API specifics.
 third_party/          # Integrations: Pinecone, VoyageAI, Wikipedia, MongoDB,
                       #   LlamaIndex, Deepgram, ElevenLabs, WolframAlpha
 tool_use/             # Tool use patterns: parallel, choice, structured JSON, memory,
-                      #   tool search w/ embeddings, programmatic tool calling, vision
+                      #   tool search w/ embeddings, programmatic tool calling, vision.
+                      #   Has its own requirements.txt and tests/.
 tool_evaluation/      # Tool evaluation framework example
 tests/notebook_tests/ # pytest-based notebook structure + execution tests
+                      #   (conftest.py at tests/ wires shared fixtures)
 scripts/              # Validation scripts (validate_notebooks.py,
                       #   validate_all_notebooks.py, test_notebooks.py,
                       #   validate_authors_sorted.py, detect-secrets/)
+anthropic_cookbook/   # Empty package stub referenced by hatchling so the project
+                      #   builds; do not put cookbook content here.
 .claude/              # Slash commands, subagents, skills for Claude Code + CI
 .github/workflows/    # CI: lint-format, notebook-tests, notebook-quality,
                       #   notebook-diff-comment, links, verify-authors, claude-pr-review,
@@ -150,6 +158,7 @@ tox.ini               # Isolated test envs: `structure`, `structure-single`,
                       #   `third-party`, `lint`, `format` (used by
                       #   `make test-notebooks-tox` and CI)
 pyproject.toml        # Project deps + ruff/pytest config (Python 3.11 / 3.12)
+requirements-dev.txt  # Pip-friendly mirror of dev deps for non-uv users
 lychee.toml           # Link-checker config (timeouts, retries, ignore patterns)
                       #   used by `links.yml` / `claude-link-review.yml`
 CONTRIBUTING.md       # Contributor walkthrough (setup, style, PR checklist)
