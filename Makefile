@@ -1,4 +1,4 @@
-.PHONY: help format lint check fix test clean install sort-authors \
+.PHONY: help format lint check fix test test-cov clean install sort-authors \
         test-notebooks test-notebooks-exec test-notebooks-tox test-notebooks-quick
 
 # Default target
@@ -60,6 +60,11 @@ fix:
 test:
 	@echo "Running tests..."
 	uv run pytest
+
+# Run tests with coverage report
+test-cov:
+	@echo "Running tests with coverage..."
+	uv run pytest --cov --cov-report=term-missing --cov-report=html
 
 # Install dependencies
 install:

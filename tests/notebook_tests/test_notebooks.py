@@ -23,6 +23,7 @@ from tests.notebook_tests.utils import (
     CellInfo,
     execute_notebook,
     extract_pip_dependencies,
+    find_dated_model_ids,
     get_notebook_kernel_info,
     validate_all_cells_executed,
     validate_cell_execution_order,
@@ -121,13 +122,14 @@ class TestCellOutputs:
             pytest.fail("Found error outputs:\n" + "\n".join(f"  - {i}" for i in issues))
 
     def test_no_empty_code_cells(self, notebook_cells: list[CellInfo]) -> None:
-        """Test that there are no empty code cells (warning only)."""
+        """Test that there are no empty code cells."""
         empty_code_cells = [c for c in notebook_cells if c.cell_type == "code" and c.is_empty]
 
         if empty_code_cells:
             indices = [str(c.index) for c in empty_code_cells]
-            pytest.skip(
-                f"Found {len(empty_code_cells)} empty code cell(s) at indices: {', '.join(indices)}"
+            pytest.fail(
+                f"Found {len(empty_code_cells)} empty code cell(s) at indices: {', '.join(indices)}. "
+                "Remove empty code cells before committing."
             )
 
 
@@ -267,36 +269,22 @@ class TestNotebookMetadata:
 class TestModelUsage:
     """Tests for Claude model usage."""
 
-    # Current supported models
     CURRENT_MODELS = {
         "claude-sonnet-4-6",
         "claude-haiku-4-5",
         "claude-opus-4-6",
     }
 
-    # Pattern to match Claude model identifiers
-    CLAUDE_MODEL_PATTERN = r"claude-[a-z0-9-]+-\d{8}"
+    def test_no_dated_api_model_ids(self, notebook_cells: list[CellInfo]) -> None:
+        """Dated model IDs (claude-...-YYYYMMDD) should use the non-dated alias instead.
 
-    def test_no_deprecated_models(self, notebook_cells: list[CellInfo]) -> None:
-        """Test that no deprecated Claude models are used."""
-        import re
-
-        issues = []
-
-        for cell in notebook_cells:
-            if cell.cell_type != "code":
-                continue
-
-            source = cell.source
-            matches = re.findall(self.CLAUDE_MODEL_PATTERN, source)
-
-            for match in matches:
-                if match not in self.CURRENT_MODELS:
-                    issues.append(f"Cell {cell.index}: Found deprecated model '{match}'")
-
-        if issues:
+        Bedrock identifiers (``anthropic.claude-...``) are exempt.
+        """
+        hits = find_dated_model_ids(notebook_cells)
+        if hits:
+            issues = "\n".join(f"  - Cell {idx}: '{m}'" for idx, m in hits)
             pytest.fail(
-                "Deprecated Claude models detected:\n"
-                + "\n".join(f"  - {i}" for i in issues)
-                + f"\n\nPlease use one of the current models: {', '.join(sorted(self.CURRENT_MODELS))}"
+                "Dated Claude API model IDs detected:\n"
+                + issues
+                + f"\n\nUse one of the current aliases: {', '.join(sorted(self.CURRENT_MODELS))}"
             )
