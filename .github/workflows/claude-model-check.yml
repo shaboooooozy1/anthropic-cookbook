@@ -25,7 +25,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check ANTHROPIC_API_KEY availability
+        id: check-secret
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ANTHROPIC_API_KEY is not configured; skipping Claude model check."
+          else
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set PR number
+        if: steps.check-secret.outputs.has_key == 'true'
         id: pr-number
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -35,12 +48,14 @@ jobs:
           fi
 
       - name: Checkout PR
+        if: steps.check-secret.outputs.has_key == 'true'
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
 
       - name: Get changed files
+        if: steps.check-secret.outputs.has_key == 'true'
         id: changed-files
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -66,7 +81,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Claude Model Validation
-        if: steps.changed-files.outputs.has_files == 'true'
+        if: steps.check-secret.outputs.has_key == 'true' && steps.changed-files.outputs.has_files == 'true'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

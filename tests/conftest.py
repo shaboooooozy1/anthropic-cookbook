@@ -64,7 +64,11 @@ def get_project_root() -> Path:
 
 
 def load_registry() -> list[dict[str, Any]]:
-    """Load the notebook registry."""
+    """Load the notebook registry.
+
+    ``registry.yaml`` is a top-level YAML list of notebook entries. Older
+    versions wrapped them in a ``notebooks:`` key; both shapes are accepted.
+    """
     registry_path = get_project_root() / "registry.yaml"
     if not registry_path.exists():
         return []
@@ -72,7 +76,11 @@ def load_registry() -> list[dict[str, Any]]:
     with open(registry_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
-    return data.get("notebooks", []) if data else []
+    if not data:
+        return []
+    if isinstance(data, list):
+        return data
+    return data.get("notebooks", [])
 
 
 def get_notebooks_to_test(config: pytest.Config) -> list[Path]:

@@ -80,29 +80,26 @@ def validate_cell_execution_order(cells: list[CellInfo]) -> list[str]:
     """
     Validate that code cells were executed in order.
 
-    Returns a list of issues found.
+    Returns a list of issues found. Each anomaly is reported once.
     """
     issues = []
     code_cells = [c for c in cells if c.cell_type == "code"]
 
-    # Get execution counts (excluding None)
+    # Get execution counts (excluding None - unexecuted cells are handled separately)
     exec_counts = [c.execution_count for c in code_cells if c.execution_count is not None]
 
     if not exec_counts:
         return issues
 
-    # Check for out-of-order execution
-    for i in range(1, len(exec_counts)):
-        if exec_counts[i] < exec_counts[i - 1]:
-            issues.append(
-                f"Cells executed out of order: cell with exec_count {exec_counts[i]} "
-                f"appears after cell with exec_count {exec_counts[i - 1]}"
-            )
-
-    # Check for gaps in execution counts (cells re-run)
+    # Walk the sequence: report each gap or backwards jump exactly once.
     expected = exec_counts[0]
-    for _i, count in enumerate(exec_counts):
-        if count != expected:
+    for count in exec_counts:
+        if count < expected:
+            issues.append(
+                f"Cells executed out of order: exec_count {count} appears after "
+                f"a cell with a higher count (expected {expected})"
+            )
+        elif count > expected:
             issues.append(
                 f"Non-sequential execution detected: expected {expected}, got {count} "
                 f"(suggests cells were re-run or run out of order)"
@@ -190,36 +187,57 @@ def validate_no_hardcoded_secrets(cells: list[CellInfo]) -> list[str]:
     return issues
 
 
+# Match `api_key=<literal-string>` where the value is a non-empty string literal.
+# Captures the literal so we can ignore env-derived values like
+# `api_key=os.environ["ANTHROPIC_API_KEY"]`.
+_LITERAL_API_KEY_PATTERN = re.compile(r"""api_key\s*=\s*(['"])([^'"]+)\1""")
+
+
 def validate_uses_env_for_api_key(cells: list[CellInfo]) -> list[str]:
     """
-    Validate that API keys are loaded from environment variables.
+    Warn when ``api_key=`` is set to a hardcoded literal in the Anthropic client.
 
-    Returns a list of warnings if API key usage doesn't follow best practices.
+    The Anthropic SDK reads ``ANTHROPIC_API_KEY`` from the environment by default,
+    so ``Anthropic()`` (no kwargs) is acceptable. Only literal string assignments
+    raise a warning here; obvious leaked keys are caught separately by
+    :func:`validate_no_hardcoded_secrets`.
     """
     warnings = []
-    has_anthropic_import = False
-    uses_env_get = False
-
     for cell in cells:
         if cell.cell_type != "code":
             continue
-
-        if "anthropic" in cell.source.lower() or "Anthropic" in cell.source:
-            has_anthropic_import = True
-
-        if 'os.environ.get("ANTHROPIC_API_KEY")' in cell.source:
-            uses_env_get = True
-        elif "os.environ['ANTHROPIC_API_KEY']" in cell.source:
-            uses_env_get = True
-        elif "os.getenv(" in cell.source and "ANTHROPIC_API_KEY" in cell.source:
-            uses_env_get = True
-
-    if has_anthropic_import and not uses_env_get:
-        # Check if it's using default client (which reads from env automatically)
-        # Anthropic() without api_key arg is fine
-        pass  # This is acceptable, Anthropic client reads from env by default
-
+        for match in _LITERAL_API_KEY_PATTERN.finditer(cell.source):
+            literal = match.group(2)
+            if literal.startswith("sk-"):
+                # Already covered by validate_no_hardcoded_secrets; skip duplicate.
+                continue
+            warnings.append(
+                f"Cell {cell.index}: api_key set to a string literal. "
+                "Use os.environ.get('ANTHROPIC_API_KEY') or omit the argument."
+            )
     return warnings
+
+
+# Match dated Claude model IDs like "claude-sonnet-4-5-20250929", but NOT
+# Bedrock IDs ("anthropic.claude-..."), which legitimately carry a date suffix.
+_DATED_MODEL_PATTERN = re.compile(r"(?<!anthropic\.)claude-[a-z0-9.-]+-\d{8}")
+
+
+def find_dated_model_ids(cells: list[CellInfo]) -> list[tuple[int, str]]:
+    """
+    Find dated Claude API model IDs in code cells.
+
+    Returns a list of ``(cell_index, model_id)`` tuples. Bedrock identifiers
+    (``anthropic.claude-...``) are deliberately ignored because Bedrock requires
+    dated IDs for releases prior to Opus 4.6.
+    """
+    hits: list[tuple[int, str]] = []
+    for cell in cells:
+        if cell.cell_type != "code":
+            continue
+        for match in _DATED_MODEL_PATTERN.findall(cell.source):
+            hits.append((cell.index, match))
+    return hits
 
 
 def extract_pip_dependencies(cells: list[CellInfo]) -> list[str]:
