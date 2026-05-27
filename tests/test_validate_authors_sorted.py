@@ -107,3 +107,35 @@ def test_main_sorted_file_left_unchanged(monkeypatch, tmp_path: Path, capsys):
         raise AssertionError("main() did not exit")
 
     assert "1 file left unchanged" in capsys.readouterr().out
+
+
+def test_main_fix_sorted_file_left_unchanged(monkeypatch, tmp_path: Path, capsys):
+    authors_file = tmp_path / "authors.yaml"
+    write_authors(authors_file, {"alice": {"name": "Alice"}, "Bob": {"name": "Bob"}})
+    monkeypatch.setattr(vas, "AUTHORS_FILE", authors_file)
+    monkeypatch.setattr(sys, "argv", ["validate_authors_sorted.py", "--fix"])
+
+    try:
+        vas.main()
+    except SystemExit as exc:
+        assert exc.code == 0
+    else:
+        raise AssertionError("main() did not exit")
+
+    assert "1 file left unchanged" in capsys.readouterr().out
+
+
+def test_main_empty_authors_file(monkeypatch, tmp_path: Path, capsys):
+    authors_file = tmp_path / "authors.yaml"
+    authors_file.write_text("", encoding="utf-8")
+    monkeypatch.setattr(vas, "AUTHORS_FILE", authors_file)
+    monkeypatch.setattr(sys, "argv", ["validate_authors_sorted.py"])
+
+    try:
+        vas.main()
+    except SystemExit as exc:
+        assert exc.code == 0
+    else:
+        raise AssertionError("main() did not exit")
+
+    assert "authors.yaml is empty" in capsys.readouterr().out
