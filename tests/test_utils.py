@@ -8,13 +8,18 @@ notebooks.
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from tests.notebook_tests import utils as nb_utils
 from tests.notebook_tests.utils import (
     CellInfo,
+    execute_notebook,
     extract_pip_dependencies,
+    find_all_notebooks,
     find_dated_model_ids,
     get_notebook_kernel_info,
     load_notebook,
@@ -24,6 +29,7 @@ from tests.notebook_tests.utils import (
     validate_no_empty_cells,
     validate_no_error_outputs,
     validate_no_hardcoded_secrets,
+    validate_notebook_structure,
     validate_uses_env_for_api_key,
 )
 
@@ -315,3 +321,151 @@ def test_parse_empty_notebook():
 )
 def test_validate_uses_env_for_api_key_parametrized(src: str, expected: int):
     assert len(validate_uses_env_for_api_key([code(0, src)])) == expected
+
+
+class TestExecuteNotebook:
+    def test_returns_failure_on_subprocess_error(self, tmp_path: Path, monkeypatch):
+        nb_path = tmp_path / "nb.ipynb"
+        nb_path.write_text(json.dumps({"cells": []}), encoding="utf-8")
+
+        def fake_run(*_args, **_kwargs):
+            return SimpleNamespace(returncode=1, stderr="boom")
+
+        monkeypatch.setattr(nb_utils.subprocess, "run", fake_run)
+
+        ok, msg, out_path = execute_notebook(nb_path, timeout=1)
+        assert ok is False
+        assert "boom" in msg
+        assert out_path is not None
+
+    def test_timeout_returns_none_output_path(self, tmp_path: Path, monkeypatch):
+        nb_path = tmp_path / "nb.ipynb"
+        nb_path.write_text(json.dumps({"cells": []}), encoding="utf-8")
+
+        def fake_run(*_args, **_kwargs):
+            raise subprocess.TimeoutExpired(cmd="x", timeout=1)
+
+        monkeypatch.setattr(nb_utils.subprocess, "run", fake_run)
+
+        ok, msg, out_path = execute_notebook(nb_path, timeout=1)
+        assert ok is False
+        assert "timed out" in msg.lower()
+        assert out_path is None
+
+
+class TestFindAllNotebooks:
+    def test_excludes_patterns_and_checkpoints(self, tmp_path: Path):
+        (tmp_path / "a.ipynb").write_text("{}", encoding="utf-8")
+        (tmp_path / "b.ipynb").write_text("{}", encoding="utf-8")
+        ckpt = tmp_path / ".ipynb_checkpoints"
+        ckpt.mkdir()
+        (ckpt / "c.ipynb").write_text("{}", encoding="utf-8")
+
+        found = find_all_notebooks(tmp_path, exclude_patterns=["**/b.ipynb"])
+        assert found == [tmp_path / "a.ipynb"]
+
+
+class TestValidateNotebookStructure:
+    def test_invalid_json_becomes_error(self, tmp_path: Path):
+        nb_path = tmp_path / "bad.ipynb"
+        nb_path.write_text("{not json", encoding="utf-8")
+
+        result = validate_notebook_structure(nb_path)
+        assert result.is_valid is False
+        assert result.errors
+
+    def test_missing_file_becomes_error(self, tmp_path: Path):
+        nb_path = tmp_path / "missing.ipynb"
+        result = validate_notebook_structure(nb_path)
+        assert result.is_valid is False
+        assert any("File not found" in e for e in result.errors)
+
+    def test_valid_notebook_runs_all_validations(self, tmp_path: Path):
+        nb_path = tmp_path / "ok.ipynb"
+        nb = {
+            "cells": [
+                {
+                    "cell_type": "code",
+                    "execution_count": 1,
+                    "source": ["print('ok')\n"],
+                    "outputs": [],
+                }
+            ]
+        }
+        nb_path.write_text(json.dumps(nb), encoding="utf-8")
+
+        result = validate_notebook_structure(nb_path)
+        assert result.is_valid is True
+        assert result.errors == []
+
+    def test_invalid_notebook_populates_errors_and_warnings(self, tmp_path: Path):
+        nb_path = tmp_path / "bad.ipynb"
+        nb = {
+            "cells": [
+                {
+                    "cell_type": "code",
+                    "execution_count": 2,
+                    "source": ["key = 'sk-ant-leak'\n", "client = Anthropic(api_key='literal')\n"],
+                    "outputs": [{"output_type": "error", "ename": "X", "evalue": "y"}],
+                },
+                {
+                    "cell_type": "code",
+                    "execution_count": 1,
+                    "source": ["print('out of order')\n"],
+                    "outputs": [],
+                },
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "source": ["x = 1\n"],
+                    "outputs": [],
+                },
+                {"cell_type": "markdown", "source": []},
+            ]
+        }
+        nb_path.write_text(json.dumps(nb), encoding="utf-8")
+
+        result = validate_notebook_structure(nb_path)
+        assert result.is_valid is False
+        assert result.errors
+        assert result.warnings
+
+
+class TestExecuteNotebookMoreBranches:
+    def test_success_path_and_optional_flags(self, tmp_path: Path, monkeypatch):
+        nb_path = tmp_path / "nb.ipynb"
+        nb_path.write_text(json.dumps({"cells": []}), encoding="utf-8")
+
+        captured = {}
+
+        def fake_run(cmd, **_kwargs):
+            captured["cmd"] = cmd
+            return SimpleNamespace(returncode=0, stderr="")
+
+        monkeypatch.setattr(nb_utils.subprocess, "run", fake_run)
+
+        ok, msg, out_path = execute_notebook(
+            nb_path,
+            timeout=1,
+            kernel_name="python3",
+            allow_errors=True,
+        )
+        assert ok is True
+        assert "successfully" in msg
+        assert out_path is not None
+        assert "--allow-errors" in captured["cmd"]
+        assert any("--ExecutePreprocessor.kernel_name=python3" == c for c in captured["cmd"])
+
+    def test_generic_exception_path(self, tmp_path: Path, monkeypatch):
+        nb_path = tmp_path / "nb.ipynb"
+        nb_path.write_text(json.dumps({"cells": []}), encoding="utf-8")
+
+        def fake_run(*_args, **_kwargs):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(nb_utils.subprocess, "run", fake_run)
+
+        ok, msg, out_path = execute_notebook(nb_path, timeout=1)
+        assert ok is False
+        assert "boom" in msg
+        assert out_path is None

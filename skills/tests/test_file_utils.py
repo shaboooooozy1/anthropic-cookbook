@@ -77,6 +77,27 @@ class TestExtractFileIds:
         response = SimpleNamespace(content=[text_block, make_bash_tool_block(["file_x"])])
         assert file_utils.extract_file_ids(response) == ["file_x"]
 
+    def test_bash_tool_block_parse_error_is_non_fatal(self, capsys):
+        # If iterating the inner content fails, we should warn and keep going.
+        bad_block = SimpleNamespace(
+            type="bash_code_execution_tool_result",
+            content=SimpleNamespace(content=123),  # not iterable -> TypeError
+        )
+        response = SimpleNamespace(content=[bad_block])
+        assert file_utils.extract_file_ids(response) == []
+        out = capsys.readouterr().out
+        assert "Warning: Error parsing bash_code_execution_tool_result" in out
+
+    def test_tool_result_parse_error_is_non_fatal(self, capsys):
+        class BadStr:
+            def __str__(self) -> str:
+                raise RuntimeError("bad __str__")
+
+        response = SimpleNamespace(content=[make_tool_result_block(BadStr())])
+        assert file_utils.extract_file_ids(response) == []
+        out = capsys.readouterr().out
+        assert "Warning: Error parsing tool_result block" in out
+
 
 class TestDownloadFile:
     def test_creates_directory_and_writes_bytes(self, tmp_path: Path):
