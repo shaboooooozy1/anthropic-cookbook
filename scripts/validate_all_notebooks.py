@@ -131,7 +131,8 @@ class NotebookValidator:
                 source = "".join(cell.get("source", []))
 
                 # Check for dated API model IDs (exclude Bedrock IDs which require dates)
-                dated_pattern = r"(?<!anthropic\.)claude-\w+-[\d.]+-\d{8}"
+                # Examples: "claude-sonnet-4-5-20250929"
+                dated_pattern = r"(?<!anthropic\.)claude-[a-z0-9.-]+-\d{8}"
                 dated_matches = re.findall(dated_pattern, source)
                 for dated_model in dated_matches:
                     result["status"] = "warning" if result["status"] == "pass" else result["status"]

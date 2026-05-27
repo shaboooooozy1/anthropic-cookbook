@@ -8,13 +8,18 @@ notebooks.
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from tests.notebook_tests.utils import (
     CellInfo,
+    NotebookValidationResult,
+    execute_notebook,
     extract_pip_dependencies,
+    find_all_notebooks,
     find_dated_model_ids,
     get_notebook_kernel_info,
     load_notebook,
@@ -24,6 +29,7 @@ from tests.notebook_tests.utils import (
     validate_no_empty_cells,
     validate_no_error_outputs,
     validate_no_hardcoded_secrets,
+    validate_notebook_structure,
     validate_uses_env_for_api_key,
 )
 
@@ -315,3 +321,151 @@ def test_parse_empty_notebook():
 )
 def test_validate_uses_env_for_api_key_parametrized(src: str, expected: int):
     assert len(validate_uses_env_for_api_key([code(0, src)])) == expected
+
+
+class TestNotebookValidationResult:
+    def test_add_error_marks_invalid(self, tmp_path: Path):
+        result = NotebookValidationResult(path=tmp_path / "nb.ipynb")
+        result.add_error("bad")
+        assert result.errors == ["bad"]
+        assert result.is_valid is False
+
+    def test_add_warning_and_info(self, tmp_path: Path):
+        result = NotebookValidationResult(path=tmp_path / "nb.ipynb")
+        result.add_warning("warn")
+        result.add_info("info")
+        assert result.warnings == ["warn"]
+        assert result.info == ["info"]
+        assert result.is_valid is True
+
+
+class TestValidateNotebookStructure:
+    def test_file_not_found(self, tmp_path: Path):
+        result = validate_notebook_structure(tmp_path / "missing.ipynb")
+        assert result.is_valid is False
+        assert result.errors
+        assert "File not found" in result.errors[0]
+
+    def test_invalid_json(self, tmp_path: Path):
+        nb_path = tmp_path / "bad.ipynb"
+        nb_path.write_text("{not json", encoding="utf-8")
+        result = validate_notebook_structure(nb_path)
+        assert result.is_valid is False
+        assert any("Invalid JSON" in e for e in result.errors)
+
+    def test_success_runs_validations(self, tmp_path: Path):
+        nb_path = tmp_path / "nb.ipynb"
+        nb_path.write_text(
+            json.dumps(
+                {
+                    "cells": [
+                        {"cell_type": "markdown", "source": []},
+                        {
+                            "cell_type": "code",
+                            "execution_count": None,
+                            "source": ["Anthropic(api_key='literal')\n"],
+                            "outputs": [],
+                        },
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = validate_notebook_structure(nb_path)
+        assert result.is_valid is False
+        assert any("not been executed" in e for e in result.errors)
+        assert any("Empty markdown cell" in w for w in result.warnings)
+        assert any("api_key set to a string literal" in w for w in result.warnings)
+
+
+class TestExecuteNotebook:
+    def test_success_builds_expected_command(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        nb_path = tmp_path / "nb.ipynb"
+        nb_path.write_text(json.dumps({"cells": []}), encoding="utf-8")
+
+        captured: dict[str, Any] = {}
+
+        class DummyResult:
+            returncode = 0
+            stderr = ""
+
+        def fake_run(cmd, capture_output, text, timeout):  # noqa: ANN001
+            captured["cmd"] = cmd
+            captured["timeout"] = timeout
+            return DummyResult()
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        ok, message, output_path = execute_notebook(
+            nb_path, timeout=12, kernel_name="python3", allow_errors=True
+        )
+        assert ok is True
+        assert "successfully" in message.lower()
+        assert output_path is not None
+        assert captured["timeout"] == 42
+        cmd = captured["cmd"]
+        assert "--allow-errors" in cmd
+        assert "--ExecutePreprocessor.kernel_name=python3" in cmd
+
+    def test_nonzero_exit_returns_stderr(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        nb_path = tmp_path / "nb.ipynb"
+        nb_path.write_text(json.dumps({"cells": []}), encoding="utf-8")
+
+        class DummyResult:
+            returncode = 2
+            stderr = "boom"
+
+        monkeypatch.setattr(subprocess, "run", lambda *a, **k: DummyResult())
+
+        ok, message, output_path = execute_notebook(nb_path, timeout=1)
+        assert ok is False
+        assert "boom" in message
+        assert output_path is not None
+
+    def test_timeout_returns_none_output_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        nb_path = tmp_path / "nb.ipynb"
+        nb_path.write_text(json.dumps({"cells": []}), encoding="utf-8")
+
+        def fake_run(*_args, **_kwargs):  # noqa: ANN001
+            raise subprocess.TimeoutExpired(cmd="jupyter", timeout=1)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        ok, message, output_path = execute_notebook(nb_path, timeout=1)
+        assert ok is False
+        assert "timed out" in message.lower()
+        assert output_path is None
+
+    def test_generic_error_returns_none_output_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        nb_path = tmp_path / "nb.ipynb"
+        nb_path.write_text(json.dumps({"cells": []}), encoding="utf-8")
+
+        def fake_run(*_args, **_kwargs):  # noqa: ANN001
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        ok, message, output_path = execute_notebook(nb_path, timeout=1)
+        assert ok is False
+        assert "boom" in message
+        assert output_path is None
+
+
+def test_find_all_notebooks_excludes_checkpoints_and_patterns(tmp_path: Path):
+    (tmp_path / "a.ipynb").write_text("{}", encoding="utf-8")
+    (tmp_path / ".ipynb_checkpoints").mkdir()
+    (tmp_path / ".ipynb_checkpoints" / "ignored.ipynb").write_text("{}", encoding="utf-8")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "excluded.ipynb").write_text("{}", encoding="utf-8")
+
+    notebooks = find_all_notebooks(tmp_path, exclude_patterns=["**/sub/*"])
+    assert [p.name for p in notebooks] == ["a.ipynb"]
+
+
+def test_validate_uses_env_for_api_key_ignores_non_code_cells():
+    assert validate_uses_env_for_api_key([md(0, "Anthropic(api_key='literal')")]) == []
