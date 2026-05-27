@@ -46,9 +46,7 @@ def test_generate_ticket_defaults() -> None:
         ("The app crashes on startup", TicketPriority.HIGH),
     ],
 )
-def test_determine_priority_keyword_matches(
-    description: str, expected: TicketPriority
-) -> None:
+def test_determine_priority_keyword_matches(description: str, expected: TicketPriority) -> None:
     ticket = _make_ticket(description, TicketCategory.ACCOUNT)
 
     assert determine_priority(ticket) == expected

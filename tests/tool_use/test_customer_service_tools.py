@@ -63,7 +63,7 @@ def test_mark_complete_requires_classification() -> None:
     result = json.loads(tools.mark_complete(ticket["id"]))
 
     assert "error" in result
-    assert "category" in result["error"].lower()
+    assert "priority" in result["error"].lower()
 
 
 def test_search_knowledge_base_invalid_category() -> None:
