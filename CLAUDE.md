@@ -118,38 +118,50 @@ Defined in `.claude/commands/` and used both in Claude Code locally and in CI:
 capabilities/         # Core Claude capabilities: classification, RAG, summarization,
                       #   contextual-embeddings, text-to-sql (each has guide.ipynb +
                       #   data/ + evaluation/)
-claude_agent_sdk/     # Tutorial series for the Claude Agent SDK (research,
-                      #   chief-of-staff, observability, SRE agents)
+claude_agent_sdk/     # Tutorial series for the Claude Agent SDK with its own
+                      #   pyproject.toml + sub-packages (research_agent,
+                      #   chief_of_staff_agent, observability_agent,
+                      #   site_reliability_agent, utils/) and 4 numbered notebooks
 coding/               # Coding-focused notebooks (e.g., frontend aesthetics)
 extended_thinking/    # Extended reasoning patterns
 finetuning/           # Fine-tuning examples (e.g., on Bedrock)
 misc/                 # Batch processing, prompt caching, evals, JSON mode,
-                      #   citations, PDF, session memory compaction, etc.
+                      #   citations, PDF, persistent sessions, session memory
+                      #   compaction, speculative prompt caching, etc.
 multimodal/           # Vision, charts/PPT, transcription, sub-agents, crop tool
 observability/        # Usage / Cost API examples
 patterns/agents/      # Agent design patterns (basic workflows, evaluator-optimizer,
                       #   orchestrator-workers)
 skills/               # Skills feature for document generation (xlsx/pptx/pdf/docx)
+                      #   with file_utils.py, skill_utils.py, custom_skills/,
+                      #   notebooks/, sample_data/, and its own CLAUDE.md
 third_party/          # Integrations: Pinecone, VoyageAI, Wikipedia, MongoDB,
                       #   LlamaIndex, Deepgram, ElevenLabs, WolframAlpha
 tool_use/             # Tool use patterns: parallel, choice, structured JSON, memory,
-                      #   tool search w/ embeddings, programmatic tool calling, vision
+                      #   tool search w/ embeddings, programmatic tool calling (PTC),
+                      #   automatic context compaction, vision, pydantic; includes
+                      #   memory_tool.py, memory_demo/, utils/, tests/
 tool_evaluation/      # Tool evaluation framework example
 tests/notebook_tests/ # pytest-based notebook structure + execution tests
+                      #   (conftest.py, test_notebooks.py, utils.py)
 scripts/              # Validation scripts (validate_notebooks.py,
                       #   validate_all_notebooks.py, test_notebooks.py,
-                      #   validate_authors_sorted.py, detect-secrets/)
+                      #   validate_authors_sorted.py) + detect-secrets/plugins.py
 .claude/              # Slash commands, subagents, skills for Claude Code + CI
 .github/workflows/    # CI: lint-format, notebook-tests, notebook-quality,
                       #   notebook-diff-comment, links, verify-authors, claude-pr-review,
                       #   claude-model-check, claude-link-review
+anthropic_cookbook/   # Empty package directory (required by hatchling build system)
+images/               # Shared image assets used across notebooks
 registry.yaml         # Catalog of notebooks (title, path, authors, categories, date)
 authors.yaml          # Contributor metadata (kept sorted; enforced by hook)
 tox.ini               # Isolated test envs: `structure`, `structure-single`,
                       #   `execution`, `execution-single`, `registry`, `quick`,
                       #   `third-party`, `lint`, `format` (used by
                       #   `make test-notebooks-tox` and CI)
-pyproject.toml        # Project deps + ruff/pytest config (Python 3.11 / 3.12)
+pyproject.toml        # Project deps + ruff/pytest config (Python 3.11 / 3.12,
+                      #   anthropic>=0.71, hatchling build, ruff E/F/I/W/UP/S/B)
+uv.lock / uv.toml     # uv-managed lockfile and project config
 lychee.toml           # Link-checker config (timeouts, retries, ignore patterns)
                       #   used by `links.yml` / `claude-link-review.yml`
 CONTRIBUTING.md       # Contributor walkthrough (setup, style, PR checklist)
