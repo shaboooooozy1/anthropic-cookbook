@@ -27,7 +27,9 @@ make format               # Format code with ruff
 make lint                 # Run linting
 make check                # format-check + lint (run before committing)
 make fix                  # Auto-fix issues + format
-make test                 # Run pytest
+make install              # uv sync --all-extras
+make test                 # Run pytest (unit tests for validators, registry, utils, skills)
+make test-cov             # Run pytest with coverage report
 
 # Notebook testing
 make test-notebooks       # Structure tests (fast, no API calls)
@@ -134,8 +136,12 @@ third_party/          # Integrations: Pinecone, VoyageAI, Wikipedia, MongoDB,
                       #   LlamaIndex, Deepgram, ElevenLabs, WolframAlpha
 tool_use/             # Tool use patterns: parallel, choice, structured JSON, memory,
                       #   tool search w/ embeddings, programmatic tool calling, vision
-tool_evaluation/      # Tool evaluation framework example
-tests/notebook_tests/ # pytest-based notebook structure + execution tests
+tool_evaluation/      # Tool evaluation framework example (notebook + evaluation.xml)
+tests/                # pytest suite: unit tests for the registry/authors
+                      #   (test_registry.py) and notebook validators (test_utils.py),
+                      #   plus tests/notebook_tests/ (structure + execution tests).
+                      #   pytest testpaths also include skills/tests/.
+anthropic_cookbook/   # Empty placeholder package so hatchling has something to build
 scripts/              # Validation scripts (validate_notebooks.py,
                       #   validate_all_notebooks.py, test_notebooks.py,
                       #   validate_authors_sorted.py, detect-secrets/)
