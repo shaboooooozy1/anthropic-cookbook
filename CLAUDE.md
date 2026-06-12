@@ -135,7 +135,14 @@ third_party/          # Integrations: Pinecone, VoyageAI, Wikipedia, MongoDB,
 tool_use/             # Tool use patterns: parallel, choice, structured JSON, memory,
                       #   tool search w/ embeddings, programmatic tool calling, vision
 tool_evaluation/      # Tool evaluation framework example
-tests/notebook_tests/ # pytest-based notebook structure + execution tests
+tests/                # pytest suite: registry/authors (test_registry.py),
+                      #   shared notebook-validator helpers (test_utils.py),
+                      #   the pre-commit linter scripts/validate_notebooks.py
+                      #   (test_validate_notebooks.py) and the authors-sort hook
+                      #   (test_validate_authors_sorted.py), plus
+                      #   tests/notebook_tests/ (structure + execution tests).
+                      #   pytest testpaths also include skills/tests/
+                      #   (test_file_utils.py, test_skill_utils.py).
 scripts/              # Validation scripts (validate_notebooks.py,
                       #   validate_all_notebooks.py, test_notebooks.py,
                       #   validate_authors_sorted.py, detect-secrets/)
