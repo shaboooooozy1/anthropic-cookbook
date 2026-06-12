@@ -35,7 +35,8 @@ make test-cov             # Run pytest with coverage report
 make test-notebooks       # Structure tests (fast, no API calls)
 make test-notebooks-exec  # Execution tests (slow, requires API key)
 make test-notebooks-tox   # Run in isolated tox environment
-make test-notebooks-quick # Quick validation without pytest
+make test-notebooks-quick # Quick validation without pytest (with no args it only
+                          #   lists notebooks; pass NOTEBOOK= or NOTEBOOK_DIR= to validate)
 
 # Target a single notebook or directory
 make test-notebooks NOTEBOOK=tool_use/calculator_tool.ipynb
@@ -121,7 +122,9 @@ capabilities/         # Core Claude capabilities: classification, RAG, summariza
                       #   contextual-embeddings, text-to-sql (each has guide.ipynb +
                       #   data/ + evaluation/)
 claude_agent_sdk/     # Tutorial series for the Claude Agent SDK (research,
-                      #   chief-of-staff, observability, SRE agents)
+                      #   chief-of-staff, observability, SRE agents). Nested uv
+                      #   project ("cc-sdk-tutorial") with its own pyproject.toml —
+                      #   run `uv sync` inside this directory for those tutorials.
 coding/               # Coding-focused notebooks (e.g., frontend aesthetics)
 extended_thinking/    # Extended reasoning patterns
 finetuning/           # Fine-tuning examples (e.g., on Bedrock)
