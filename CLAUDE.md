@@ -23,6 +23,7 @@ See `CONTRIBUTING.md` for the full contributor walkthrough (uv install, pip alte
 ## Development Commands
 
 ```bash
+make help                 # List all available make targets
 make format               # Format code with ruff
 make lint                 # Run linting
 make check                # format-check + lint (run before committing)
@@ -120,8 +121,10 @@ Defined in `.claude/commands/` and used both in Claude Code locally and in CI:
 capabilities/         # Core Claude capabilities: classification, RAG, summarization,
                       #   contextual-embeddings, text-to-sql (each has guide.ipynb +
                       #   data/ + evaluation/)
-claude_agent_sdk/     # Tutorial series for the Claude Agent SDK (research,
-                      #   chief-of-staff, observability, SRE agents)
+claude_agent_sdk/     # Tutorial series for the Claude Agent SDK (numbered
+                      #   00–03 notebooks). Ships its own pyproject.toml plus
+                      #   per-agent packages: research_agent, chief_of_staff_agent,
+                      #   observability_agent, site_reliability_agent, and shared utils/
 coding/               # Coding-focused notebooks (e.g., frontend aesthetics)
 extended_thinking/    # Extended reasoning patterns
 finetuning/           # Fine-tuning examples (e.g., on Bedrock)
@@ -131,11 +134,15 @@ multimodal/           # Vision, charts/PPT, transcription, sub-agents, crop tool
 observability/        # Usage / Cost API examples
 patterns/agents/      # Agent design patterns (basic workflows, evaluator-optimizer,
                       #   orchestrator-workers)
-skills/               # Skills feature for document generation (xlsx/pptx/pdf/docx)
+skills/               # Skills feature for document generation (xlsx/pptx/pdf/docx).
+                      #   Includes notebooks/, custom_skills/, sample_data/, helper
+                      #   modules (file_utils.py, skill_utils.py), its own CLAUDE.md,
+                      #   and tests/ (in pytest testpaths)
 third_party/          # Integrations: Pinecone, VoyageAI, Wikipedia, MongoDB,
                       #   LlamaIndex, Deepgram, ElevenLabs, WolframAlpha
 tool_use/             # Tool use patterns: parallel, choice, structured JSON, memory,
-                      #   tool search w/ embeddings, programmatic tool calling, vision
+                      #   tool search w/ embeddings, programmatic tool calling, vision.
+                      #   Plus supporting code: memory_tool.py, utils/, memory_demo/, tests/
 tool_evaluation/      # Tool evaluation framework example (notebook + evaluation.xml)
 tests/                # pytest suite: registry/authors (test_registry.py),
                       #   shared notebook-validator helpers (test_utils.py),
