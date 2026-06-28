@@ -20,9 +20,8 @@ def evaluate_retrieval(retrieved_links, correct_links):
 
 
 def get_assert(output: str, context) -> bool | float | dict[str, Any]:
-    correct_chunks = context["vars"]["correct_chunks"]
-
     try:
+        correct_chunks = context["vars"]["correct_chunks"]
         precision, recall, mrr, f1 = evaluate_retrieval(output, correct_chunks)
         metrics: dict[str, float] = {}
         metrics["precision"] = precision
@@ -61,34 +60,35 @@ def get_assert(output: str, context) -> bool | float | dict[str, Any]:
             ],
         }
     except Exception as e:
+        zero_scores = {"mrr": 0.0, "precision": 0.0, "recall": 0.0, "f1": 0.0}
         return {
-            "pass": False,  # if f1 > 0.3 we will pass, otherwise fail
-            "score": f1,
+            "pass": False,
+            "score": 0.0,
             "reason": f"Unexpected error: {str(e)}",
             "componentResults": [
                 {
                     "pass": False,
-                    "score": mrr,
+                    "score": zero_scores["mrr"],
                     "reason": f"Unexpected error: {str(e)}",
-                    "named_scores": {"MRR": mrr},
+                    "named_scores": {"MRR": zero_scores["mrr"]},
                 },
                 {
                     "pass": False,
-                    "score": precision,
+                    "score": zero_scores["precision"],
                     "reason": f"Unexpected error: {str(e)}",
-                    "named_scores": {"Precision": precision},
+                    "named_scores": {"Precision": zero_scores["precision"]},
                 },
                 {
                     "pass": False,
-                    "score": recall,
+                    "score": zero_scores["recall"],
                     "reason": f"Unexpected error: {str(e)}",
-                    "named_scores": {"Recall": recall},
+                    "named_scores": {"Recall": zero_scores["recall"]},
                 },
                 {
                     "pass": False,
-                    "score": f1,
+                    "score": zero_scores["f1"],
                     "reason": f"Unexpected error: {str(e)}",
-                    "named_scores": {"F1": f1},
+                    "named_scores": {"F1": zero_scores["f1"]},
                 },
             ],
         }
