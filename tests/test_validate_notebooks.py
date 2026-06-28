@@ -29,6 +29,7 @@ def write_notebook(path: Path, cells: list[dict]) -> Path:
         "nbformat": 4,
         "nbformat_minor": 5,
     }
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(nb), encoding="utf-8")
     return path
 
@@ -90,6 +91,23 @@ class TestMain:
             validate_notebooks.main()
         assert exc.value.code == 0
         assert "No notebooks" in capsys.readouterr().out
+
+    def test_all_discovers_notebooks_from_current_directory(
+        self, tmp_path: Path, monkeypatch, capsys
+    ):
+        write_notebook(tmp_path / "clean.ipynb", [code_cell("print(1)")])
+        write_notebook(tmp_path / "nested" / "other.ipynb", [code_cell("print(2)")])
+        checkpoint_dir = tmp_path / ".ipynb_checkpoints"
+        checkpoint_dir.mkdir()
+        write_notebook(checkpoint_dir / "ignored.ipynb", [code_cell("")])
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(sys, "argv", ["validate_notebooks.py", "--all"])
+        with pytest.raises(SystemExit) as exc:
+            validate_notebooks.main()
+
+        assert exc.value.code == 0
+        assert "All 2 notebook(s) validated successfully" in capsys.readouterr().out
 
     def test_clean_notebook_exits_zero(self, tmp_path: Path, monkeypatch, capsys):
         nb = write_notebook(tmp_path / "clean.ipynb", [code_cell("print(1)")])

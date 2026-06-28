@@ -11,6 +11,15 @@ if sys.platform == "win32":
     sys.stderr.reconfigure(encoding="utf-8")
 
 
+def find_notebooks(root: Path = Path(".")) -> list[Path]:
+    """Return all repository notebooks that should be validated."""
+    return sorted(
+        path
+        for path in root.rglob("*.ipynb")
+        if ".ipynb_checkpoints" not in path.parts and "test_outputs" not in path.parts
+    )
+
+
 def validate_notebook(path: Path) -> list:
     """Validate a single notebook."""
     issues = []
@@ -38,7 +47,12 @@ def main():
     has_issues = False
 
     # Get notebook paths from command line arguments
-    notebooks = [Path(arg) for arg in sys.argv[1:] if arg.endswith(".ipynb")]
+    validate_all = "--all" in sys.argv[1:]
+    notebooks = (
+        find_notebooks()
+        if validate_all
+        else [Path(arg) for arg in sys.argv[1:] if arg.endswith(".ipynb")]
+    )
 
     if not notebooks:
         print("⚠️ No notebooks to validate")
