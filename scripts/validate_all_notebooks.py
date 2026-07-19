@@ -678,18 +678,22 @@ Overall: {passing}/{total} notebooks passing ({percentage:.1f}%)
             for cell in nb.get("cells", []):
                 if cell.get("cell_type") == "code":
                     source = cell.get("source", [])
-                    new_source = []
+                    is_str_source = isinstance(source, str)
+                    lines = source.splitlines(keepends=True) if is_str_source else source
 
-                    for line in source:
+                    cell_modified = False
+                    new_lines = []
+                    for line in lines:
                         new_line = line
                         for old, new in replacements.items():
                             if old in line:
                                 new_line = new_line.replace(old, new)
-                                modified = True
-                        new_source.append(new_line)
+                                cell_modified = True
+                        new_lines.append(new_line)
 
-                    if modified:
-                        cell["source"] = new_source
+                    if cell_modified:
+                        cell["source"] = "".join(new_lines) if is_str_source else new_lines
+                        modified = True
 
             if modified:
                 # Save with nice formatting
