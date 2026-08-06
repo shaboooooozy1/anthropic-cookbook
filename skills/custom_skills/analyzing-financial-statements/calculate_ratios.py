@@ -291,7 +291,7 @@ def generate_summary(ratios: dict[str, Any]) -> str:
 
     # Leverage summary
     lev = ratios.get("leverage", {})
-    if lev.get("debt_to_equity", 0) >= 0:
+    if "debt_to_equity" in lev:
         summary_parts.append(
             f"Debt-to-equity of {lev['debt_to_equity']:.2f} indicates {'conservative' if lev['debt_to_equity'] < 0.5 else 'moderate' if lev['debt_to_equity'] < 1 else 'high'} leverage."
         )
