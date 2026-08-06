@@ -16,7 +16,7 @@ cp .env.example .env
 # Edit .env and add your ANTHROPIC_API_KEY
 ```
 
-See `CONTRIBUTING.md` for the full contributor walkthrough (uv install, pip alternative, troubleshooting).
+See `CONTRIBUTING.md` for the full contributor walkthrough (uv install, pip alternative, troubleshooting). `AGENTS.md` holds agent/Cursor-Cloud-specific notes (e.g. that `TEST_MODE`/`MAX_TOKENS` are documentation only and not read by the test harness, and how to launch Jupyter).
 
 `.env.example` also exposes optional knobs: `CLAUDE_MODEL` (default model used by some notebooks for cost control, e.g. `claude-haiku-4-5`), `TEST_MODE`, `MAX_TOKENS`, `DEBUG`.
 
@@ -147,15 +147,16 @@ tool_evaluation/      # Tool evaluation framework example (notebook + evaluation
 tests/                # pytest suite: registry/authors (test_registry.py),
                       #   shared notebook-validator helpers (test_utils.py),
                       #   the pre-commit linter scripts/validate_notebooks.py
-                      #   (test_validate_notebooks.py) and the authors-sort hook
-                      #   (test_validate_authors_sorted.py), plus
-                      #   tests/notebook_tests/ (structure + execution tests).
+                      #   (test_validate_notebooks.py + test_validate_all_notebooks.py)
+                      #   and the authors-sort hook (test_validate_authors_sorted.py),
+                      #   plus tests/notebook_tests/ (structure + execution tests).
                       #   pytest testpaths also include skills/tests/
                       #   (test_file_utils.py, test_skill_utils.py).
 anthropic_cookbook/   # Empty placeholder package so hatchling has something to build
 scripts/              # Validation scripts (validate_notebooks.py,
                       #   validate_all_notebooks.py, test_notebooks.py,
-                      #   validate_authors_sorted.py, detect-secrets/)
+                      #   validate_authors_sorted.py, and detect-secrets/ —
+                      #   a custom detect-secrets plugin + baseline)
 .claude/              # Slash commands, subagents, skills for Claude Code + CI
 .github/workflows/    # CI: lint-format, notebook-tests, notebook-quality,
                       #   notebook-diff-comment, links, verify-authors, claude-pr-review,
