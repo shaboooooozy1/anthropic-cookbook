@@ -73,14 +73,14 @@ ci: CI/CD changes
 
 ## Key Rules
 
-1. **API keys:** Never commit `.env` files. Always read with `os.environ.get("ANTHROPIC_API_KEY")`.
+1. **API keys:** Never commit `.env` files. Use `dotenv.load_dotenv()` then access keys via `os.environ` or `os.getenv()`.
 
 2. **Dependencies:** Use `uv add <package>` or `uv add --dev <package>`. Don't edit `pyproject.toml` directly.
 
 3. **Models — use current Claude models, not dated IDs:**
-   - Sonnet: `claude-sonnet-4-6`
+   - Sonnet: `claude-sonnet-5`
    - Haiku: `claude-haiku-4-5`
-   - Opus: `claude-opus-4-6`
+   - Opus: `claude-opus-4-8`
    - **Never** use dated IDs like `claude-sonnet-4-6-20250514`. Always use the non-dated alias.
    - **Bedrock** uses different IDs:
      - Opus 4.6: `anthropic.claude-opus-4-6-v1`
@@ -126,6 +126,7 @@ claude_agent_sdk/     # Tutorial series for the Claude Agent SDK (numbered
                       #   per-agent packages: research_agent, chief_of_staff_agent,
                       #   observability_agent, site_reliability_agent, and shared utils/
 coding/               # Coding-focused notebooks (e.g., frontend aesthetics)
+evals/                # Model evaluation patterns and benchmarks
 extended_thinking/    # Extended reasoning patterns
 finetuning/           # Fine-tuning examples (e.g., on Bedrock)
 misc/                 # Batch processing, prompt caching, evals, JSON mode,
