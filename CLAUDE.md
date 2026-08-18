@@ -18,7 +18,7 @@ cp .env.example .env
 
 See `CONTRIBUTING.md` for the full contributor walkthrough (uv install, pip alternative, troubleshooting). `AGENTS.md` holds agent/Cursor-Cloud-specific notes (e.g. that `TEST_MODE`/`MAX_TOKENS` are documentation only and not read by the test harness, and how to launch Jupyter).
 
-`.env.example` also exposes optional knobs: `CLAUDE_MODEL` (default model used by some notebooks for cost control, e.g. `claude-haiku-4-5`), `TEST_MODE`, `MAX_TOKENS`, `DEBUG`.
+`.env.example` also exposes optional knobs: `CLAUDE_MODEL` (default model used by some notebooks for cost control, e.g. `claude-haiku-4-5`), `TEST_MODE`, `MAX_TOKENS`, `DEBUG`. Note that `TEST_MODE`/`MAX_TOKENS` are documentation-only defaults — the test harness does not read them. Some third-party / embedding notebooks additionally need `VOYAGE_API_KEY`.
 
 ## Development Commands
 
@@ -171,6 +171,9 @@ pyproject.toml        # Project deps + ruff/pytest config (Python 3.11 / 3.12)
 lychee.toml           # Link-checker config (timeouts, retries, ignore patterns)
                       #   used by `links.yml` / `claude-link-review.yml`
 CONTRIBUTING.md       # Contributor walkthrough (setup, style, PR checklist)
+AGENTS.md             # Cross-tool agent notes (uv workflow, Cursor Cloud setup,
+                      #   which env vars the harness actually reads); defers to
+                      #   CLAUDE.md / CONTRIBUTING.md / Makefile / pyproject.toml
 ```
 
 ## Adding a New Cookbook
