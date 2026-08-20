@@ -1,4 +1,8 @@
-# Claude Cookbooks
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Claude Cookbooks
 
 A collection of Jupyter notebooks and Python examples for building with the Claude API and the Claude Agent SDK.
 
@@ -125,7 +129,9 @@ claude_agent_sdk/     # Tutorial series for the Claude Agent SDK (numbered
                       #   00–03 notebooks). Ships its own pyproject.toml plus
                       #   per-agent packages: research_agent, chief_of_staff_agent,
                       #   observability_agent, site_reliability_agent, and shared utils/
-coding/               # Coding-focused notebooks (e.g., frontend aesthetics)
+coding/               # Coding-focused examples: frontend-aesthetics notebook and
+                      #   prompt_vs_project_vs_skills/ (static HTML decision guide
+                      #   served via `python3 -m http.server`, not a notebook)
 extended_thinking/    # Extended reasoning patterns
 finetuning/           # Fine-tuning examples (e.g., on Bedrock)
 misc/                 # Batch processing, prompt caching, evals, JSON mode,
