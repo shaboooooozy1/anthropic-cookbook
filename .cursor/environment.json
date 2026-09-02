@@ -1,0 +1,14 @@
+{
+  "name": "Claude Cookbooks",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "jupyter-lab",
+      "command": "export PATH=\"$HOME/.local/bin:$PATH\" && uv run jupyter lab --no-browser --port 8888 --ip 0.0.0.0 --ServerApp.token=\"\" --ServerApp.password=\"\"",
+      "description": "Jupyter Lab server for running the cookbook notebooks. Open http://localhost:8888/lab. Live cells call the Claude API and need ANTHROPIC_API_KEY (and VOYAGE_API_KEY for some embedding notebooks) set as environment secrets."
+    }
+  ],
+  "ports": [
+    { "name": "jupyter", "port": 8888 }
+  ]
+}
