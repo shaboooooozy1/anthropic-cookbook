@@ -113,6 +113,7 @@ If a hook fails, fix the issues and try committing again.
 1. **Use environment variables for API keys**:
    ```python
    import os
+
    api_key = os.environ.get("ANTHROPIC_API_KEY")
    ```
 

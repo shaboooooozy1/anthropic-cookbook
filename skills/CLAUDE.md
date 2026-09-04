@@ -117,6 +117,7 @@ response = client.beta.messages.create(
 ```python
 # Use file_utils.extract_file_ids() - handles beta response structure
 from file_utils import extract_file_ids, download_all_files
+
 file_ids = extract_file_ids(response)
 ```
 
@@ -126,12 +127,12 @@ file_ids = extract_file_ids(response)
 ```python
 # ❌ Wrong
 file_content = client.beta.files.download(file_id)
-with open(path, 'wb') as f:
+with open(path, "wb") as f:
     f.write(file_content.content)  # No .content attribute!
 
 # ✅ Correct
 file_content = client.beta.files.download(file_id)
-with open(path, 'wb') as f:
+with open(path, "wb") as f:
     f.write(file_content.read())  # Use .read()
 
 # FileMetadata fields: id, filename, size_bytes (not size), mime_type, created_at, type, downloadable
@@ -150,6 +151,7 @@ print(f"Size: {metadata.size_bytes} bytes")  # Use size_bytes, not size
 **Solution**: Restart kernel or reload module
 ```python
 import importlib
+
 importlib.reload(file_utils)
 ```
 

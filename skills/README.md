@@ -142,7 +142,7 @@ client = Anthropic(
     api_key="your-api-key",
     default_headers={
         "anthropic-beta": "code-execution-2025-08-25,files-api-2025-04-14,skills-2025-10-02"
-    }
+    },
 )
 ```
 
@@ -174,24 +174,17 @@ client = Anthropic(api_key="your-api-key")
 response = client.messages.create(
     model="claude-sonnet-4-6",
     max_tokens=4096,
-    container={
-        "skills": [
-            {"type": "anthropic", "skill_id": "xlsx", "version": "latest"}
-        ]
-    },
+    container={"skills": [{"type": "anthropic", "skill_id": "xlsx", "version": "latest"}]},
     tools=[{"type": "code_execution_20250825", "name": "code_execution"}],
-    messages=[{
-        "role": "user",
-        "content": "Create an Excel file with a simple budget spreadsheet"
-    }]
+    messages=[{"role": "user", "content": "Create an Excel file with a simple budget spreadsheet"}],
 )
 
 # Step 2: Extract file_id from the response
 file_id = None
 for block in response.content:
-    if block.type == "tool_result" and hasattr(block, 'output'):
+    if block.type == "tool_result" and hasattr(block, "output"):
         # Look for file_id in the tool output
-        if 'file_id' in str(block.output):
+        if "file_id" in str(block.output):
             file_id = extract_file_id(block.output)  # Parse the file_id
             break
 
