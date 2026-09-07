@@ -18,6 +18,26 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+# Mapping of deprecated model IDs to their current non-dated aliases.
+# Used both to flag deprecated models during validation and to auto-fix them,
+# so keep this single source of truth in sync with CLAUDE.md.
+DEPRECATED_MODEL_REPLACEMENTS = {
+    "claude-3-5-sonnet-20240620": "claude-sonnet-4-6",
+    "claude-3-5-sonnet-20241022": "claude-sonnet-4-6",
+    "claude-3-5-sonnet-latest": "claude-sonnet-4-6",
+    "claude-3-haiku-20240307": "claude-haiku-4-5",
+    "claude-3-5-haiku-20241022": "claude-haiku-4-5",
+    "claude-3-opus-20240229": "claude-opus-4-6",
+    "claude-3-opus-latest": "claude-opus-4-6",
+    "claude-sonnet-4-20250514": "claude-sonnet-4-6",
+    "claude-opus-4-20250514": "claude-opus-4-6",
+    "claude-opus-4-1": "claude-opus-4-6",
+    "claude-sonnet-4-5-20250929": "claude-sonnet-4-6",
+    "claude-sonnet-4-5": "claude-sonnet-4-6",
+    "claude-opus-4-5-20251101": "claude-opus-4-6",
+    "claude-opus-4-5": "claude-opus-4-6",
+}
+
 
 class NotebookValidator:
     """Validates Jupyter notebooks for common issues."""
@@ -109,22 +129,7 @@ class NotebookValidator:
                         )
 
         # Check for deprecated models
-        deprecated_models = {
-            "claude-3-5-sonnet-20240620": "claude-sonnet-4-6",
-            "claude-3-5-sonnet-20241022": "claude-sonnet-4-6",
-            "claude-3-5-sonnet-latest": "claude-sonnet-4-6",
-            "claude-3-haiku-20240307": "claude-haiku-4-5",
-            "claude-3-5-haiku-20241022": "claude-haiku-4-5",
-            "claude-3-opus-20240229": "claude-opus-4-6",
-            "claude-3-opus-latest": "claude-opus-4-6",
-            "claude-sonnet-4-20250514": "claude-sonnet-4-6",
-            "claude-opus-4-20250514": "claude-opus-4-6",
-            "claude-opus-4-1": "claude-opus-4-6",
-            "claude-sonnet-4-5-20250929": "claude-sonnet-4-6",
-            "claude-sonnet-4-5": "claude-sonnet-4-6",
-            "claude-opus-4-5-20251101": "claude-opus-4-6",
-            "claude-opus-4-5": "claude-opus-4-6",
-        }
+        deprecated_models = DEPRECATED_MODEL_REPLACEMENTS
 
         for i, cell in enumerate(nb.get("cells", [])):
             if cell.get("cell_type") == "code":
@@ -657,22 +662,7 @@ Overall: {passing}/{total} notebooks passing ({percentage:.1f}%)
             with open(notebook_path) as f:
                 nb = json.load(f)
 
-            replacements = {
-                "claude-3-5-sonnet-20240620": "claude-sonnet-4-6",
-                "claude-3-5-sonnet-20241022": "claude-sonnet-4-6",
-                "claude-3-5-sonnet-latest": "claude-sonnet-4-6",
-                "claude-3-haiku-20240307": "claude-haiku-4-5",
-                "claude-3-5-haiku-20241022": "claude-haiku-4-5",
-                "claude-3-opus-20240229": "claude-opus-4-6",
-                "claude-3-opus-latest": "claude-opus-4-6",
-                "claude-sonnet-4-20250514": "claude-sonnet-4-6",
-                "claude-opus-4-20250514": "claude-opus-4-6",
-                "claude-opus-4-1": "claude-opus-4-6",
-                "claude-sonnet-4-5-20250929": "claude-sonnet-4-6",
-                "claude-sonnet-4-5": "claude-sonnet-4-6",
-                "claude-opus-4-5-20251101": "claude-opus-4-6",
-                "claude-opus-4-5": "claude-opus-4-6",
-            }
+            replacements = DEPRECATED_MODEL_REPLACEMENTS
 
             modified = False
             for cell in nb.get("cells", []):
