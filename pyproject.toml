@@ -65,7 +65,7 @@ ignore = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "skills/tests"]
+testpaths = ["tests", "skills/tests", "tool_use/tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -82,12 +82,15 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["tests/notebook_tests", "scripts", "skills"]
+source = ["tests/notebook_tests", "scripts", "skills", "tool_use"]
 omit = [
     "tests/test_*.py",
     "tests/conftest.py",
     "tests/notebook_tests/test_*.py",
     "tests/notebook_tests/conftest.py",
+    "skills/tests/test_*.py",
+    "tool_use/tests/test_*.py",
+    "tool_use/tests/conftest.py",
     "*/.venv/*",
     "*/site-packages/*",
 ]
