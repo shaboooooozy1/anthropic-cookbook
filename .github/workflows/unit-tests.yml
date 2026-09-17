@@ -47,6 +47,14 @@ jobs:
         # notebook structure/execution tests under tests/notebook_tests are
         # covered by notebook-tests.yml and are excluded here to keep this job
         # fast and API-key-free.
+        #
+        # `shell: bash` is load-bearing, not cosmetic. GitHub's *unspecified*
+        # default shell is `bash -e {0}`, which has no `pipefail`, so the exit
+        # status of the pipeline below would be `tee`'s (always 0) and a failing
+        # pytest run would report success. Specifying `bash` explicitly runs
+        # `bash --noprofile --norc -eo pipefail {0}`, so pytest's non-zero exit
+        # propagates through `| tee` and fails the job.
+        shell: bash
         run: |
           uv run pytest \
             --ignore=tests/notebook_tests \
