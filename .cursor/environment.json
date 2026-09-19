@@ -1,0 +1,14 @@
+{
+  "name": "Claude Cookbooks",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "jupyter-lab",
+      "command": "export PATH=\"$HOME/.local/bin:$PATH\" && uv run --locked jupyter lab --no-browser --port 8888 --ip 0.0.0.0 --ServerApp.token=\"\" --ServerApp.password=\"\"",
+      "description": "Jupyter Lab with root project dependencies. Open http://localhost:8888/lab inside the isolated Cloud Agent environment. Nested projects and specialized notebooks need their documented extra setup. Live API cells need ANTHROPIC_API_KEY (and sometimes VOYAGE_API_KEY or other service credentials) as environment secrets."
+    }
+  ],
+  "ports": [
+    { "name": "jupyter", "port": 8888 }
+  ]
+}
