@@ -1,19 +1,33 @@
 {
   "hooks": {
-    "SessionStart": {
-      "command": ".claude/hooks/session-start.sh",
-      "description": "Verify Skills cookbook environment setup (SDK version, API key, directories)"
-    },
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
-        "command": ".claude/hooks/pre-write.sh",
-        "description": "Warn before overwriting protected files (whl, plan, sample data)",
-        "toolFilter": ["Write"]
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/pre-write.sh"
+          }
+        ]
       },
       {
-        "command": ".claude/hooks/pre-bash.sh",
-        "description": "Safety checks for bash commands (rm, pip install, jupyter)",
-        "toolFilter": ["Bash"]
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/pre-bash.sh"
+          }
+        ]
       }
     ]
   },

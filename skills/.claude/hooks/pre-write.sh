@@ -4,8 +4,10 @@
 
 set -e
 
-TOOL_NAME="$1"
-FILE_PATH="$2"
+# Claude Code passes the hook payload as JSON on stdin, not as argv
+INPUT=$(cat)
+TOOL_NAME=$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tool_name",""))')
+FILE_PATH=$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tool_input",{}).get("file_path",""))')
 
 # Only run for Write tool
 if [[ "$TOOL_NAME" != "Write" ]]; then
