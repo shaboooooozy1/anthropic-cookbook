@@ -22,12 +22,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0  # Need full history for diff
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -71,6 +71,8 @@ jobs:
       - name: Run notebook structure tests
         id: structure-tests
         if: steps.changed-notebooks.outputs.has_notebooks == 'true'
+        # bash -eo pipefail so `pytest | tee` reports pytest's status, not tee's
+        shell: bash
         run: |
           echo "## Notebook Structure Tests" >> $GITHUB_STEP_SUMMARY
 
@@ -124,9 +126,10 @@ jobs:
       - name: Post test results to PR
         if: |
           github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
           steps.changed-notebooks.outputs.has_notebooks == 'true' &&
           steps.structure-tests.outputs.has_failures == 'true'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -153,19 +156,19 @@ jobs:
 
             Post using: gh pr comment $PR_NUMBER --body "your comment"
           claude_args: |
-            --allowedTools "Bash(gh pr comment:*),Bash(cat:*),Read"
+            --allowedTools "Bash(gh pr comment:*),Read"
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
 
-      - name: Run notebook execution tests (maintainers only)
+      - name: Run notebook execution tests (same-repo branches only)
         id: execution-tests
         if: |
           steps.changed-notebooks.outputs.has_notebooks == 'true' &&
           (github.event_name == 'push' ||
-           github.event.pull_request.author_association == 'MEMBER' ||
-           github.event.pull_request.author_association == 'OWNER')
+           github.event.pull_request.head.repo.full_name == github.repository)
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        shell: bash
         run: |
           echo "## Notebook Execution Tests" >> $GITHUB_STEP_SUMMARY
 
@@ -207,7 +210,7 @@ jobs:
 
       - name: Upload test artifacts
         if: always() && steps.changed-notebooks.outputs.has_notebooks == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: notebook-test-results
           path: |

@@ -20,7 +20,10 @@ for the authoritative dev workflow, code style, and commands.
   still pass; only live API execution is blocked. `TEST_MODE`/`MAX_TOKENS` in `.env.example`
   are documentation only and are not read by the test harness.
 - The "application" is Jupyter. Run the dev server with
-  `uv run jupyter lab --no-browser --port 8888 --ip 0.0.0.0 --ServerApp.token="" --ServerApp.password=""`
-  and open `http://localhost:8888/lab`. Notebook outputs are intentionally committed to the
-  repo, so re-running notebooks will produce diffs — only commit notebook output changes
-  intentionally.
+  `uv run jupyter lab --no-browser --port 8888` and open the tokenised URL it prints
+  (`http://127.0.0.1:8888/lab?token=...`). Keep the default loopback bind and token auth: this
+  process holds `ANTHROPIC_API_KEY`/`VOYAGE_API_KEY`, so never pass `--ip 0.0.0.0` together with
+  empty `--ServerApp.token`/`--ServerApp.password`. For a remote dev box use the platform's port
+  forwarding or `ssh -N -L 8888:127.0.0.1:8888 <host>`. Notebook outputs are intentionally
+  committed to the repo, so re-running notebooks will produce diffs — only commit notebook
+  output changes intentionally.

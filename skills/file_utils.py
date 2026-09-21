@@ -203,6 +203,11 @@ def download_all_files(
         if prefix:
             filename = f"{prefix}{filename}"
 
+        # Sanitize: never let an API-supplied name escape output_dir
+        filename = os.path.basename(filename)
+        if not filename or filename in {".", ".."}:
+            filename = f"file_{i}.bin"
+
         # Construct full output path
         output_path = os.path.join(output_dir, filename)
 

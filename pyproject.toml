@@ -49,9 +49,7 @@ select = ["E", "F", "I", "W", "UP", "S", "B"]
 ignore = [
     "E501",   # line too long
     "S101",   # assert used (ok in tests)
-    "S301",   # pickle usage ok for local data in cookbooks
     "S311",   # pseudo-random generators ok for non-crypto
-    "S608",   # SQL string construction ok for demo/educational code
     "N806",   # variable in function should be lowercase (allow for API responses)
 ]
 
@@ -63,6 +61,12 @@ ignore = [
     "N803",   # argument name should be lowercase
     "N806",   # variable in function should be lowercase
 ]
+# Educational trees only: pickle caches for local vector DBs and f-string SQL in demos.
+# Everywhere else S301/S608 stay enforced.
+"capabilities/**" = ["S301", "S608"]
+"tool_use/memory_demo/sample_code/*.py" = ["S608"]
+# ruff false positive: an LLM routing prompt ("select ... from these options"), not SQL
+"patterns/agents/basic_workflows.ipynb" = ["S608"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "skills/tests", "tool_use/tests"]
