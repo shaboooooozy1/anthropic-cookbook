@@ -34,9 +34,12 @@ fi
 
 # Warn if trying to start jupyter/servers
 if [[ "$COMMAND" == *"jupyter notebook"* ]] || [[ "$COMMAND" == *"jupyter lab"* ]]; then
-    # Block an auth-less server: this process holds the API key from .env
-    if [[ "$COMMAND" == *'--ServerApp.token=""'* ]] || [[ "$COMMAND" == *"--ServerApp.token=''"* ]] \
-        || [[ "$COMMAND" == *'--ServerApp.password=""'* ]] || [[ "$COMMAND" == *"--ServerApp.password=''"* ]]; then
+    # Block an auth-less server: this process holds the API key from .env.
+    # Matches --ServerApp/--NotebookApp/--IdentityProvider .token/.password set to
+    # an empty value in any spelling: =""  =''  = (bare)  or space-separated "" / ''.
+    AUTH_OFF_RE="--(ServerApp|NotebookApp|IdentityProvider)\\.(token|password)"
+    AUTH_OFF_RE+="(=(\"\"|''|)([[:space:]]|\$)|[[:space:]]+(\"\"|'')([[:space:]]|\$))"
+    if [[ "$COMMAND" =~ $AUTH_OFF_RE ]]; then
         echo "BLOCKED: do not start Jupyter with token/password auth disabled." >&2
         exit 2
     fi
