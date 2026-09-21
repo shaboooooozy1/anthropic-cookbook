@@ -14,6 +14,11 @@ Configuration:
 
 Usage:
     python sre_bot_slack.py
+
+    Run infra_setup.py from site_reliability_agent/ first: it generates the
+    config/ and hooks/ directories that the agent and its PreToolUse hooks read.
+    The agent runs with that directory as its cwd regardless of where this
+    script is launched from.
 """
 
 import asyncio
@@ -433,6 +438,10 @@ async def process_investigation(
     # This avoids the SDK MCP race condition bug
     options = ClaudeAgentOptions(
         system_prompt=SYSTEM_PROMPT,
+        # Run from site_reliability_agent/ so the hooks below find the
+        # config/ that infra_setup.py generated (they read config/api-server.env
+        # relative to cwd and silently pass when it is absent).
+        cwd=str(MCP_SERVER_PATH.parent),
         mcp_servers={
             "sre": {
                 "command": python_path,

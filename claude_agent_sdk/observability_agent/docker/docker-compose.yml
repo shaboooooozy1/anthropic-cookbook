@@ -5,6 +5,9 @@ services:
       dockerfile: observability_agent/docker/Dockerfile
     ports:
       - "127.0.0.1:8001:8000"  # Different port to avoid conflict with research agent; loopback only
+    # Compose resolves ${VAR} from the shell environment or a .env next to this file,
+    # NOT from claude_agent_sdk/.env. Either export both variables or point compose at it:
+    #   docker compose --env-file ../../.env -f docker-compose.yml up
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY}
       - GITHUB_TOKEN=${GITHUB_TOKEN:?set GITHUB_TOKEN}
