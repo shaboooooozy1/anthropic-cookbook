@@ -42,7 +42,7 @@ services:
       POSTGRES_PASSWORD: demo
       POSTGRES_DB: demo
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
       - postgres_data:/var/lib/postgresql/data
@@ -58,7 +58,7 @@ services:
       context: ../services
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     env_file:
       - ./api-server.env
     depends_on:
@@ -79,7 +79,7 @@ services:
       - ../scripts/healthy_services.py:/app/healthy_services.py
     command: python healthy_services.py
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     restart: unless-stopped
 
   # Traffic Generator
@@ -103,7 +103,7 @@ services:
   prometheus:
     image: prom/prometheus:latest
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     extra_hosts:
@@ -121,7 +121,7 @@ services:
   grafana:
     image: grafana/grafana:latest
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       # Demo only — change for any non-local deployment
       - GF_SECURITY_ADMIN_PASSWORD=demo
@@ -536,12 +536,12 @@ async def list_users():
             )
         else:
             logger.error(f"Database error: {error_msg}")
-            raise HTTPException(status_code=500, detail=f"Database error: {error_msg}")
+            raise HTTPException(status_code=500, detail="Database error")
 
     except Exception as e:
         status = "500"
         logger.error(f"Unexpected error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
     finally:
         duration_ms = (time.time() - start_time) * 1000
@@ -586,7 +586,7 @@ async def list_orders():
     except Exception as e:
         status = "500"
         logger.error(f"Orders endpoint error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
     finally:
         duration_ms = (time.time() - start_time) * 1000
@@ -630,7 +630,7 @@ async def get_stats():
     except Exception as e:
         status = "500"
         logger.error(f"Stats endpoint error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
     finally:
         duration_ms = (time.time() - start_time) * 1000

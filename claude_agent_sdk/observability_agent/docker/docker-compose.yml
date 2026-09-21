@@ -1,16 +1,18 @@
 services:
   observability-agent:
-    build: 
+    build:
       context: ../..
       dockerfile: observability_agent/docker/Dockerfile
     ports:
-      - "8001:8000"  # Different port to avoid conflict with research agent
-    env_file:
-      - ../../.env
+      - "127.0.0.1:8001:8000"  # Different port to avoid conflict with research agent; loopback only
     environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:?set GITHUB_TOKEN}
       - DOCKER_HOST=unix:///var/run/docker.sock
     volumes:
-      # Mount Docker socket for MCP server containers
+      # WARNING: mounting the Docker socket grants host-root-equivalent access to this
+      # container. It is required so agent.py can spawn ghcr.io/github/github-mcp-server
+      # as a sibling container. Local demo only - never run on a shared or internet-reachable host.
       - /var/run/docker.sock:/var/run/docker.sock
     dns:
       - 8.8.8.8

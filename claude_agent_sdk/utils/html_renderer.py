@@ -267,8 +267,10 @@ def _render_markdown_text(text: str) -> str:
         HTML string
     """
     if markdown is not None:
+        # Escape raw HTML first so model/tool output cannot inject markup;
+        # quote=False keeps link titles like [t](url "title") parseable
         result: str = markdown.markdown(
-            text,
+            html.escape(text, quote=False),
             extensions=["tables", "fenced_code", "nl2br", "sane_lists"],
         )
         return result
