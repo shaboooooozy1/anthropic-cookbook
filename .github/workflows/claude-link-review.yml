@@ -48,9 +48,10 @@ jobs:
 
       - name: Checkout PR
         if: steps.check-secret.outputs.has_key == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
+          persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
 
       - name: Get changed files
@@ -81,7 +82,7 @@ jobs:
 
       - name: Run Claude Link Review
         if: steps.check-secret.outputs.has_key == 'true' && steps.changed-files.outputs.has_files == 'true'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -91,6 +92,6 @@ jobs:
             Changed files to review:
             $(cat changed_files.txt)
           claude_args: |
-            --allowedTools "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(echo:*),Read,Glob,Grep,WebFetch"
+            --allowedTools "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Glob,Grep,WebFetch(domain:docs.claude.com),WebFetch(domain:docs.anthropic.com)"
         env:
           PR_NUMBER: ${{ steps.pr-number.outputs.number }}

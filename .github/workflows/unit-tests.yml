@@ -27,10 +27,10 @@ jobs:
         python-version: ["3.11", "3.12"]
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -47,6 +47,8 @@ jobs:
         # notebook structure/execution tests under tests/notebook_tests are
         # covered by notebook-tests.yml and are excluded here to keep this job
         # fast and API-key-free.
+        # bash -eo pipefail so `pytest | tee` reports pytest's status, not tee's
+        shell: bash
         run: |
           uv run pytest \
             --ignore=tests/notebook_tests \

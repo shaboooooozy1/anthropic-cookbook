@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr review:*), Bash(git diff:*), Bash(git log:*), Task, Read, Glob, Grep
+allowed-tools: Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr comment:*), Bash(git diff:*), Bash(git log:*), Task, Read, Glob, Grep
 description: Review a pull request and post the review to GitHub (CI/automated use)
 ---
 
@@ -9,7 +9,7 @@ description: Review a pull request and post the review to GitHub (CI/automated u
 
 ## Your task
 
-Review the specified pull request and post a review to GitHub. This command is designed for CI/automated environments.
+Review the specified pull request and post the review as a PR comment on GitHub. This command is designed for CI/automated environments, so it never casts an approving or blocking review itself — a human ratifies the recommendation.
 
 ### Step 1: Gather PR context
 
@@ -30,18 +30,18 @@ The code-reviewer agent will analyze:
 - Performance considerations
 - Documentation and comments
 
-### Step 3: Determine review outcome
+### Step 3: Determine the recommendation
 
-Based on the code review findings, determine the appropriate review action:
-- **APPROVE** (`--approve`): Code looks good, no significant issues found
-- **REQUEST_CHANGES** (`--request-changes`): Critical issues that must be fixed before merging
-- **COMMENT** (`--comment`): Suggestions or minor issues that don't block merging
+Based on the code review findings, choose the recommendation to state in the `**Recommendation**` line of the template below. It is advice for a human reviewer to ratify, not a GitHub review state:
+- **APPROVE**: Code looks good, no significant issues found
+- **REQUEST_CHANGES**: Critical issues that must be fixed before merging
+- **COMMENT**: Suggestions or minor issues that don't block merging
 
 ### Step 4: Post the review
 
-Post the review to GitHub using:
+Post the review to GitHub as a comment (never `gh pr review`):
 ```
-gh pr review $ARGUMENTS --body "YOUR_REVIEW_BODY" --approve|--request-changes|--comment
+gh pr comment $ARGUMENTS --body "YOUR_REVIEW_BODY"
 ```
 
 Format your review body using this template with collapsible sections:
@@ -89,4 +89,4 @@ List specific items that need attention. Use checkboxes for trackable items:
 - Use checkboxes in actionable feedback so authors can track what they've addressed
 - For Jupyter notebooks, reference code snippets instead of cell numbers (e.g., "in cell with `data = pd.read_csv(...)`")
 
-**Important:** The `gh pr review` command produces no output on success. Only run this command once - do not retry if there is no output, as that indicates success.
+**Important:** Only run the `gh pr comment` command once - it prints the comment URL on success; do not retry.
