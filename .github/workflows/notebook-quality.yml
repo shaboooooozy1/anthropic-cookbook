@@ -6,6 +6,7 @@ on:
       - '**/*.ipynb'
       - 'pyproject.toml'
       - 'uv.lock'
+      - '.github/workflows/notebook-quality.yml'
   push:
     branches: [main]
     paths:
@@ -21,6 +22,8 @@ jobs:
     
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Need full history for diff
       
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -42,14 +45,47 @@ jobs:
       
       - name: Validate notebook structure
         id: validate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        # shell: bash runs `bash --noprofile --norc -eo pipefail {0}`. The default
+        # `bash -e {0}` has no pipefail, so `validate_notebooks.py | tee` returned
+        # tee's 0 and a failing validator was reported as "no issues".
+        shell: bash
         run: |
-          uv run python scripts/validate_notebooks.py | tee validation_output.txt
-          # Check if validation found issues
-          if grep -q "❌" validation_output.txt; then
-            echo "has_issues=true" >> $GITHUB_OUTPUT
-            exit 1
+          # scripts/validate_notebooks.py only checks the .ipynb paths passed as
+          # arguments (with none it prints "No notebooks to validate" and exits 0),
+          # so hand it the notebooks changed in this PR / push.
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            git fetch origin "$BASE_REF"
+            # --diff-filter=d excludes deleted notebooks, which cannot be read.
+            CHANGED_NOTEBOOKS=$(git diff --name-only --diff-filter=d "origin/$BASE_REF"...HEAD | grep '\.ipynb$' || echo "")
           else
-            echo "has_issues=false" >> $GITHUB_OUTPUT
+            CHANGED_NOTEBOOKS=$(git diff --name-only --diff-filter=d HEAD~1 HEAD | grep '\.ipynb$' || echo "")
+          fi
+
+          if [ -z "$CHANGED_NOTEBOOKS" ]; then
+            echo "No notebooks changed; nothing to validate"
+            echo "has_issues=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Validating changed notebooks:"
+          echo "$CHANGED_NOTEBOOKS"
+          mapfile -t NOTEBOOKS <<< "$CHANGED_NOTEBOOKS"
+
+          # The pipeline sits in an `if` condition so that under -e a failing
+          # validator does not abort the step before has_issues is written. The
+          # validator's exit status is the primary signal; the cross-mark grep only
+          # tells a reported issue apart from a crash (traceback, uv failure).
+          if uv run python scripts/validate_notebooks.py "${NOTEBOOKS[@]}" 2>&1 | tee validation_output.txt; then
+            echo "has_issues=false" >> "$GITHUB_OUTPUT"
+          else
+            if ! grep -q "❌" validation_output.txt; then
+              echo "::error::validate_notebooks.py exited non-zero without reporting issues; see validation_output.txt"
+            fi
+            echo "has_issues=true" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
         continue-on-error: true
 
@@ -113,10 +149,20 @@ jobs:
         run: |
           echo "🔒 Running in mock mode for external contributor"
 
+          # `python -m nbformat.validator FILE` only imports the module and ignores
+          # FILE (nbformat.validator has no __main__ block), so it always exited 0 and
+          # validated nothing. Call nbformat.validate() directly, and aggregate
+          # inside `if !` so -e does not stop at the first invalid notebook and
+          # every failure is reported.
+          failed=0
           for notebook in $(find . -name "*.ipynb" -not -path "*/.*"); do
             echo "📓 Validating structure: $notebook"
-            uv run python -m nbformat.validator "$notebook"
+            if ! uv run python -c 'import sys, nbformat; nbformat.validate(nbformat.read(sys.argv[1], as_version=4))' "$notebook"; then
+              echo "::error file=${notebook#./}::notebook fails nbformat schema validation"
+              failed=$((failed+1))
+            fi
           done
+          [ "$failed" -eq 0 ] || { echo "::error::$failed invalid notebook(s)"; exit 1; }
       
       - name: Upload test outputs
         if: always()
