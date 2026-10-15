@@ -1033,7 +1033,10 @@ INPUT=$(cat)
 NEW_VALUE=$(echo "$INPUT" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-inp = data.get('input', {})
+# A PreToolUse hook's stdin carries the tool arguments under 'tool_input'.
+# Reading 'input' returned {} on every call, so NEW_VALUE was always empty
+# and this guard exited 0 for out-of-range values instead of blocking them.
+inp = data.get('tool_input', {})
 replace_val = inp.get('new_value', '') or inp.get('replace', '')
 for part in replace_val.split('\\n'):
     if 'DB_POOL_SIZE' in part:
@@ -1045,7 +1048,8 @@ for part in replace_val.split('\\n'):
 if [ -n "$NEW_VALUE" ]; then
     if [ "$NEW_VALUE" -lt 5 ] 2>/dev/null || [ "$NEW_VALUE" -gt 100 ] 2>/dev/null; then
         echo "BLOCKED: DB_POOL_SIZE=$NEW_VALUE is outside safe range (5-100)"
-        exit 1
+        # 2, not 1: a PreToolUse hook denies the call on exit 2 specifically.
+        exit 2
     fi
 fi
 exit 0
@@ -1059,7 +1063,8 @@ INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-print(data.get('input', {}).get('command', ''))
+# 'tool_input', not 'input' — see validate_pool_size.sh above.
+print(data.get('tool_input', {}).get('command', ''))
 " 2>/dev/null)
 
 if echo "$COMMAND" | grep -q "up.*api-server"; then
@@ -1071,7 +1076,8 @@ if echo "$COMMAND" | grep -q "up.*api-server"; then
              [ "$POOL_SIZE" -gt 100 ] 2>/dev/null; }; then
             echo "BLOCKED: Cannot deploy with \
 DB_POOL_SIZE=$POOL_SIZE (safe range: 5-100)"
-            exit 1
+            # 2, not 1: a PreToolUse hook denies the call on exit 2 specifically.
+            exit 2
         fi
     fi
 fi
