@@ -6,9 +6,14 @@ for the authoritative dev workflow, code style, and commands.
 
 ## Cursor Cloud specific instructions
 
-- Package manager is **uv** (not pip/poetry). It installs to `~/.local/bin`. The startup
-  update script installs uv (if missing) and runs `uv sync --all-extras`, which creates the
-  `.venv`. Run project commands through `uv run ...` (e.g. `uv run pytest`) or the `make`
+- Package manager is **uv** (not pip/poetry). It installs to `~/.local/bin`. The Cloud
+  Build runs `.cursor/install.sh`, which installs uv (if missing) and runs
+  `uv sync --locked --all-extras` to create `.venv` without rewriting `uv.lock`.
+  This covers the root project and default dev group, not the separate
+  `claude_agent_sdk/` project or notebook-specific requirements. Follow their local
+  setup instructions and select the appropriate Jupyter kernel when needed.
+  If project metadata changes, deliberately update and commit `uv.lock` before the
+  next Build. Run project commands through `uv run ...` (e.g. `uv run pytest`) or the `make`
   targets, which already wrap `uv run`.
 - Standard commands are documented in `CLAUDE.md` / `Makefile`. Key ones: `make check`
   (ruff format-check + lint), `make test` (pytest unit suite), `make test-notebooks`
@@ -20,7 +25,9 @@ for the authoritative dev workflow, code style, and commands.
   still pass; only live API execution is blocked. `TEST_MODE`/`MAX_TOKENS` in `.env.example`
   are documentation only and are not read by the test harness.
 - The "application" is Jupyter. Run the dev server with
-  `uv run jupyter lab --no-browser --port 8888 --ip 0.0.0.0 --ServerApp.token="" --ServerApp.password=""`
-  and open `http://localhost:8888/lab`. Notebook outputs are intentionally committed to the
+  `uv run --locked jupyter lab --no-browser --port 8888 --ip 0.0.0.0 --ServerApp.token="" --ServerApp.password=""`
+  and open `http://localhost:8888/lab` inside the isolated Cloud Agent environment.
+  This command disables Jupyter authentication: do not expose it on a public or
+  untrusted network. Notebook outputs are intentionally committed to the
   repo, so re-running notebooks will produce diffs — only commit notebook output changes
   intentionally.
