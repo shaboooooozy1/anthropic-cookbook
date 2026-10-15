@@ -7,6 +7,7 @@ on:
       - 'tests/notebook_tests/**'
       - 'pyproject.toml'
       - 'uv.lock'
+      - '.github/workflows/notebook-tests.yml'
   push:
     branches: [main]
     paths:
@@ -47,10 +48,12 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ]; then
             # For PRs, get notebooks changed compared to base branch
             git fetch origin "$BASE_REF"
-            CHANGED_NOTEBOOKS=$(git diff --name-only "origin/$BASE_REF"...HEAD | grep '\.ipynb$' || echo "")
+            # --diff-filter=d excludes deleted notebooks: pytest exits 1 when
+            # --notebook points at a path that no longer exists.
+            CHANGED_NOTEBOOKS=$(git diff --name-only --diff-filter=d "origin/$BASE_REF"...HEAD | grep '\.ipynb$' || echo "")
           else
             # For push to main, get notebooks changed in the push
-            CHANGED_NOTEBOOKS=$(git diff --name-only HEAD~1 HEAD | grep '\.ipynb$' || echo "")
+            CHANGED_NOTEBOOKS=$(git diff --name-only --diff-filter=d HEAD~1 HEAD | grep '\.ipynb$' || echo "")
           fi
 
           if [ -z "$CHANGED_NOTEBOOKS" ]; then
@@ -71,7 +74,9 @@ jobs:
       - name: Run notebook structure tests
         id: structure-tests
         if: steps.changed-notebooks.outputs.has_notebooks == 'true'
-        # bash -eo pipefail so `pytest | tee` reports pytest's status, not tee's
+        # shell: bash runs `bash --noprofile --norc -eo pipefail {0}`. The default
+        # `bash -e {0}` has no pipefail, so `pytest ... | tee` returned tee's 0 and
+        # every notebook was reported as passing even when pytest failed.
         shell: bash
         run: |
           echo "## Notebook Structure Tests" >> $GITHUB_STEP_SUMMARY
@@ -168,6 +173,9 @@ jobs:
            github.event.pull_request.head.repo.full_name == github.repository)
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        # shell: bash runs `bash --noprofile --norc -eo pipefail {0}`. The default
+        # `bash -e {0}` has no pipefail, so `pytest ... | tee` returned tee's 0 and a
+        # failing or timed-out pytest was reported as "Executed".
         shell: bash
         run: |
           echo "## Notebook Execution Tests" >> $GITHUB_STEP_SUMMARY
@@ -224,7 +232,10 @@ jobs:
       - name: Final status check
         if: steps.changed-notebooks.outputs.has_notebooks == 'true'
         run: |
-          if [ "${{ steps.structure-tests.outputs.has_failures }}" = "true" ]; then
+          # The structure step has continue-on-error, so an early abort leaves
+          # has_failures empty. Require an explicit "false" rather than passing
+          # by omission.
+          if [ "${{ steps.structure-tests.outputs.has_failures }}" != "false" ]; then
             echo "❌ Some notebook tests failed. Please fix the issues above."
             exit 1
           fi

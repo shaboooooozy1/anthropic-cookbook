@@ -8,6 +8,7 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - 'Makefile'
+      - '.github/workflows/lint-format.yml'
   push:
     branches: [main]
     paths:
@@ -24,6 +25,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0  # Need full history: the three-dot diff below needs a merge base
 
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
@@ -45,9 +48,21 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            # For PRs, get files changed compared to base branch
+            # For PRs, get files changed compared to base branch.
             git fetch origin "$BASE_REF"
-            CHANGED_FILES=$(git diff --name-only "origin/$BASE_REF"...HEAD | grep -E '\.(py|ipynb)$' || echo "")
+            # With the default depth-1 checkout the three-dot range below has no
+            # merge base, so git diff died with exit 128 and the old
+            # `| grep ... || echo ""` turned that into "no changed files": PR runs
+            # never linted or format-checked anything. fetch-depth: 0 on the
+            # checkout fixes the range; the if-condition (exempt from -e) makes any
+            # remaining git failure fail the step instead of being masked.
+            # --diff-filter=d drops deleted files so ruff is not handed missing paths.
+            if ! DIFF_OUT=$(git diff --name-only --diff-filter=d "origin/$BASE_REF"...HEAD); then
+              echo "::error::git diff origin/$BASE_REF...HEAD failed; cannot determine changed files"
+              exit 1
+            fi
+            # grep exits 1 when nothing matches; that is the only status deliberately discarded.
+            CHANGED_FILES=$(printf '%s\n' "$DIFF_OUT" | grep -E '\.(py|ipynb)$' || true)
           else
             # For push to main, check all files
             CHANGED_FILES=$(find . -type f \( -name "*.py" -o -name "*.ipynb" \) -not -path "./.venv/*" -not -path "./venv/*" -not -path "*/build/*" -not -path "*/dist/*")

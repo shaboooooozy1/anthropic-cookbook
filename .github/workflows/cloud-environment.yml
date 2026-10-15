@@ -1,0 +1,75 @@
+name: Cloud Environment
+
+on:
+  pull_request:
+    paths:
+      - '.cursor/**'
+      - '.github/workflows/cloud-environment.yml'
+      - 'tests/test_cloud_environment.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'uv.toml'
+  push:
+    branches: [main]
+    paths:
+      - '.cursor/**'
+      - '.github/workflows/cloud-environment.yml'
+      - 'tests/test_cloud_environment.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'uv.toml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cloud-environment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install and repeat to verify idempotence
+        run: |
+          bash .cursor/install.sh
+          bash .cursor/install.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Validate configuration and failure paths
+        run: |
+          uv run --locked python -m json.tool .cursor/environment.json > /dev/null
+          bash -n .cursor/install.sh
+          uv run --locked ruff check tests/test_cloud_environment.py
+          uv run --locked ruff format --check tests/test_cloud_environment.py
+          uv run --locked pytest tests/test_cloud_environment.py
+      - name: Verify Jupyter startup and a clean tracked checkout
+        shell: bash
+        run: |
+          log_file=$(mktemp)
+          command=$(uv run --locked python -c 'import json; print(json.load(open(".cursor/environment.json"))["terminals"][0]["command"])')
+          # CI only needs loopback access; Jupyter rejects duplicate --ip options.
+          command=${command/--ip 0.0.0.0/--ip 127.0.0.1}
+          setsid bash -c "$command --ServerApp.port_retries=0" > "$log_file" 2>&1 &
+          jupyter_pid=$!
+          cleanup() {
+            status=$?
+            if [ "$status" -ne 0 ]; then cat "$log_file"; fi
+            kill -- "-$jupyter_pid" 2>/dev/null || true
+            wait "$jupyter_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          ready=false
+          for attempt in {1..30}; do
+            kill -0 "$jupyter_pid"
+            if curl -fsS --max-time 2 http://127.0.0.1:8888/api > /dev/null && curl -fsS --max-time 2 http://127.0.0.1:8888/lab > /dev/null; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" = true
+          git diff --exit-code

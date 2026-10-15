@@ -6,9 +6,14 @@ for the authoritative dev workflow, code style, and commands.
 
 ## Cursor Cloud specific instructions
 
-- Package manager is **uv** (not pip/poetry). It installs to `~/.local/bin`. The startup
-  update script installs uv (if missing) and runs `uv sync --all-extras`, which creates the
-  `.venv`. Run project commands through `uv run ...` (e.g. `uv run pytest`) or the `make`
+- Package manager is **uv** (not pip/poetry). It installs to `~/.local/bin`. The Cloud
+  Build runs `.cursor/install.sh`, which installs uv (if missing) and runs
+  `uv sync --locked --all-extras` to create `.venv` without rewriting `uv.lock`.
+  This covers the root project and default dev group, not the separate
+  `claude_agent_sdk/` project or notebook-specific requirements. Follow their local
+  setup instructions and select the appropriate Jupyter kernel when needed.
+  If project metadata changes, deliberately update and commit `uv.lock` before the
+  next Build. Run project commands through `uv run ...` (e.g. `uv run pytest`) or the `make`
   targets, which already wrap `uv run`.
 - Standard commands are documented in `CLAUDE.md` / `Makefile`. Key ones: `make check`
   (ruff format-check + lint), `make test` (pytest unit suite), `make test-notebooks`
@@ -20,10 +25,11 @@ for the authoritative dev workflow, code style, and commands.
   still pass; only live API execution is blocked. `TEST_MODE`/`MAX_TOKENS` in `.env.example`
   are documentation only and are not read by the test harness.
 - The "application" is Jupyter. Run the dev server with
-  `uv run jupyter lab --no-browser --port 8888` and open the tokenised URL it prints
-  (`http://127.0.0.1:8888/lab?token=...`). Keep the default loopback bind and token auth: this
+  `uv run jupyter lab --no-browser --port 8888` and open the tokenized URL it prints
+  (`http://127.0.0.1:8888/lab?token=...`). Keep the loopback bind and token auth: this
   process holds `ANTHROPIC_API_KEY`/`VOYAGE_API_KEY`, so never pass `--ip 0.0.0.0` together with
-  empty `--ServerApp.token`/`--ServerApp.password`. For a remote dev box use the platform's port
-  forwarding or `ssh -N -L 8888:127.0.0.1:8888 <host>`. Notebook outputs are intentionally
-  committed to the repo, so re-running notebooks will produce diffs — only commit notebook
-  output changes intentionally.
+  empty `--ServerApp.token`/`--ServerApp.password`. The Cloud Agent terminal uses the same secure
+  defaults. For a remote dev box use the platform's port forwarding or
+  `ssh -N -L 8888:127.0.0.1:8888 <host>`. Notebook outputs are intentionally committed to the
+  repo, so re-running notebooks will produce diffs — only commit notebook output changes
+  intentionally.
