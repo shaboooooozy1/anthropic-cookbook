@@ -85,28 +85,48 @@ jobs:
         run: |
           FILES=""
 
+          # Paths are spliced into lychee-action's args (an eval sink), so only
+          # accept a conservative character set. This has to vet BOTH sources
+          # below: a converted notebook's name comes from a PR-controlled
+          # *.ipynb stem, so it is no more trustworthy than a changed path.
+          # The set also excludes newlines, which keeps a filename from forging
+          # extra key=value lines in $GITHUB_OUTPUT.
+          is_safe_path() {
+            case "$1" in
+              "") return 1 ;;
+              *[!A-Za-z0-9._/-]*) return 1 ;;
+            esac
+            return 0
+          }
+
           # Add all changed markdown files (from any directory)
           while IFS= read -r f; do
-            # Paths are spliced into lychee-action's args (an eval sink), so only
-            # accept a conservative character set.
-            case "$f" in
-              *[!A-Za-z0-9._/-]*)
-                echo "Skipping path with unsafe characters: $f"
-                continue
-                ;;
-            esac
-            if [ -n "$f" ] && [ -f "$f" ]; then
+            if ! is_safe_path "$f"; then
+              echo "Skipping path with unsafe characters: $f"
+              continue
+            fi
+            if [ -f "$f" ]; then
               FILES="$FILES $f"
             fi
           done < <(echo "$CHANGED_FILES" | grep '\.md$')
 
-          # Add converted notebooks
-          if [ -d "temp_md" ] && [ -n "$(ls -A temp_md/*.md 2>/dev/null)" ]; then
-            FILES="$FILES temp_md/*.md"
-          fi
+          # Add converted notebooks. Expand the glob HERE and vet each result:
+          # appending the literal string "temp_md/*.md" instead left the
+          # filenames to be resolved by a later unquoted expansion, which put
+          # unvetted notebook stems straight into file_args.
+          for f in temp_md/*.md; do
+            [ -f "$f" ] || continue
+            if ! is_safe_path "$f"; then
+              echo "Skipping converted notebook with unsafe characters: $f"
+              continue
+            fi
+            FILES="$FILES $f"
+          done
 
-          # Remove leading/trailing whitespace
-          FILES=$(echo $FILES | xargs)
+          # Strip the single leading space the accumulator adds. Deliberately
+          # not `echo $FILES | xargs`: an unquoted expansion is what reopened
+          # the injection above, and every element here is already vetted.
+          FILES="${FILES# }"
 
           echo "Prepared files for lychee: $FILES"
 
