@@ -92,6 +92,6 @@ jobs:
             Changed files to review:
             $(cat changed_files.txt)
           claude_args: |
-            --allowedTools "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Glob,Grep,WebFetch(domain:docs.claude.com),WebFetch(domain:docs.anthropic.com)"
+            --allowedTools "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Glob,Grep,WebFetch(domain:docs.claude.com),WebFetch(domain:docs.anthropic.com),WebFetch(domain:platform.claude.com)"
         env:
           PR_NUMBER: ${{ steps.pr-number.outputs.number }}
