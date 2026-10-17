@@ -14,7 +14,6 @@ Content types supported:
 import base64
 import html
 import pprint
-import re
 from typing import Any
 
 # Optional dependencies with graceful fallback
@@ -255,10 +254,6 @@ def _render_message_list(messages: list[Any]) -> str:
     return _render_code_block(pprint.pformat(messages))
 
 
-_CODE_ELEMENT_RE = re.compile(r"(<code[^>]*>)(.*?)(</code>)", re.DOTALL)
-_DOUBLE_ESCAPE_RE = re.compile(r"&amp;(lt|gt|amp);")
-
-
 def _render_markdown_text(text: str) -> str:
     """
     Render text as markdown HTML if the markdown library is available.
@@ -272,20 +267,18 @@ def _render_markdown_text(text: str) -> str:
         HTML string
     """
     if markdown is not None:
-        # Escape raw HTML first so model/tool output cannot inject markup;
-        # quote=False keeps link titles like [t](url "title") parseable
-        result: str = markdown.markdown(
-            html.escape(text, quote=False),
+        # Turn off Python-Markdown's raw-HTML passthrough rather than escaping the
+        # source. Tags from model or tool output become ordinary text that the
+        # serializer escapes, so they stay inert, while markdown that needs a
+        # literal `>` or `<...>` -- blockquotes and autolinks -- still parses.
+        # Escaping the source first broke both of those.
+        md = markdown.Markdown(
             extensions=["tables", "fenced_code", "nl2br", "sane_lists"],
         )
-        # Python-Markdown entity-escapes code spans and fenced blocks itself, so
-        # the pre-escaped `&lt;`/`&gt;`/`&amp;` get escaped a second time there.
-        # Undo exactly one layer inside <code>: every `<`, `>`, `&` stays an
-        # entity, so the content is still inert.
-        return _CODE_ELEMENT_RE.sub(
-            lambda m: m[1] + _DOUBLE_ESCAPE_RE.sub(r"&\1;", m[2]) + m[3],
-            result,
-        )
+        md.preprocessors.deregister("html_block", strict=False)
+        md.inlinePatterns.deregister("html", strict=False)
+        result: str = md.convert(text)
+        return result
     # Fallback: preserve whitespace and escape HTML
     return f"<pre style='white-space: pre-wrap;'>{html.escape(text)}</pre>"
 
