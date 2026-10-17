@@ -213,8 +213,9 @@ jobs:
 
           if [ "$EXEC_FAILED" -gt 0 ]; then
             echo "exec_failures=$EXEC_FAILED" >> $GITHUB_OUTPUT
+            echo "❌ $EXEC_FAILED notebook(s) failed live execution."
+            exit 1
           fi
-        continue-on-error: true
 
       - name: Upload test artifacts
         if: always() && steps.changed-notebooks.outputs.has_notebooks == 'true'
