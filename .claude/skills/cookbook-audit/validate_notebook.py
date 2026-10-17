@@ -111,19 +111,18 @@ class NotebookValidator:
 
             plugins_path = project_root / "scripts" / "detect-secrets" / "plugins.py"
 
-            # Build command with baseline if it exists
+            # Build command as an argv list (no shell) so the notebook path is never
+            # interpreted by sh; add the baseline/plugin flags only when a baseline exists
+            cmd = ["uvx", "--from", "detect-secrets", "detect-secrets-hook"]
             if baseline_path:
-                cmd = [
-                    "sh",
-                    "-c",
-                    f"echo '{notebook_abs}' | tr '\\n' '\\0' | xargs -0 uvx --from detect-secrets detect-secrets-hook --baseline {baseline_path} --plugin {plugins_path} --verbose",
+                cmd += [
+                    "--baseline",
+                    str(baseline_path),
+                    "--plugin",
+                    str(plugins_path),
+                    "--verbose",
                 ]
-            else:
-                cmd = [
-                    "sh",
-                    "-c",
-                    f"echo '{notebook_abs}' | tr '\\n' '\\0' | xargs -0 uvx --from detect-secrets detect-secrets-hook",
-                ]
+            cmd.append(str(notebook_abs))
 
             result = subprocess.run(  # noqa: S603
                 cmd,
