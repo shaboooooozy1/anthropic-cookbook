@@ -32,13 +32,18 @@ if [[ "$COMMAND" == *"pip install"* ]] && [[ "$COMMAND" == *"anthropic"* ]]; the
     echo "ℹ️  Remember: Restart Jupyter kernel after SDK installation!"
 fi
 
-# Warn if trying to start jupyter/servers
-if [[ "$COMMAND" == *"jupyter notebook"* ]] || [[ "$COMMAND" == *"jupyter lab"* ]]; then
+# Warn if trying to start jupyter/servers. Covers the subcommands, the installed
+# console-script entry points (jupyter-lab, jupyter-notebook) and python -m, since
+# the auth check below is a security gate rather than just a notice.
+JUPYTER_RE="(^|[^[:alnum:]_.-])(jupyter([[:space:]]+|-)(notebook|lab|server)"
+JUPYTER_RE+="|python[0-9.]*[[:space:]]+-m[[:space:]]+(jupyterlab|notebook|jupyter_server))"
+if [[ "$COMMAND" =~ $JUPYTER_RE ]]; then
     # Block an auth-less server: this process holds the API key from .env.
-    # Matches --ServerApp/--NotebookApp/--IdentityProvider .token/.password set to
-    # an empty value in any spelling: =""  =''  = (bare)  or space-separated "" / ''.
+    # A token/password counts only as a non-empty literal. Rejected: the empty
+    # spellings ("" '' bare-= flag-with-no-value) and any shell-expanded value
+    # ($VAR, "$VAR", `cmd`, $(cmd)), which cannot be shown to be non-empty here.
     AUTH_OFF_RE="--(ServerApp|NotebookApp|IdentityProvider)\\.(token|password)"
-    AUTH_OFF_RE+="(=(\"\"|''|)([[:space:]]|\$)|[[:space:]]+(\"\"|'')([[:space:]]|\$))"
+    AUTH_OFF_RE+="((=|[[:space:]]+)([\"']?[\$\`]|\"\"|''|[[:space:]]|\$)|\$)"
     if [[ "$COMMAND" =~ $AUTH_OFF_RE ]]; then
         echo "BLOCKED: do not start Jupyter with token/password auth disabled." >&2
         exit 2

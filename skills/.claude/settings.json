@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/session-start.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.sh"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/pre-write.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-write.sh"
           }
         ]
       },
@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/pre-bash.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-bash.sh"
           }
         ]
       }
