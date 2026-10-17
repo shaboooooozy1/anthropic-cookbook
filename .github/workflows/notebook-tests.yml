@@ -194,6 +194,16 @@ jobs:
               continue
             fi
 
+            # Notebooks that cannot run headless opt out via notebook metadata
+            # (metadata.ci.skip_execution). Execution is blocking now, so without an
+            # opt-out a required check goes red on a notebook that can never pass -
+            # e.g. one needing a live Docker stack or files outside its own directory,
+            # since nbconvert runs the kernel in the notebook's directory.
+            if [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("metadata",{}).get("ci",{}).get("skip_execution", False))' "$notebook")" = "True" ]; then
+              echo "⏭️ Skipped (opted out of execution): $notebook" >> $GITHUB_STEP_SUMMARY
+              continue
+            fi
+
             echo "Executing: $notebook"
 
             # Run execution test with timeout
