@@ -94,6 +94,11 @@ jobs:
           is_safe_path() {
             case "$1" in
               "") return 1 ;;
+              # A leading '-' makes lychee read the path as an option (e.g.
+              # '-p./x.md' as --preprocess), and every character in it passes
+              # the class below. The `--` in args: is the real fix; this keeps
+              # such a path out of the list in the first place.
+              -*) return 1 ;;
               *[!A-Za-z0-9._/-]*) return 1 ;;
             esac
             return 0
@@ -147,6 +152,7 @@ jobs:
             --config lychee.toml
             --format markdown
             --no-progress
+            --
             ${{ steps.file-list.outputs.file_args }}
           output: lychee-report.md
           fail: false
@@ -161,6 +167,7 @@ jobs:
             --config lychee.toml
             --format markdown
             --no-progress
+            --
             skills/**/*.md
             temp_md/*.md
             README.md
