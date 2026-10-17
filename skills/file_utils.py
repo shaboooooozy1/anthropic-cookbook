@@ -199,14 +199,16 @@ def download_all_files(
             # If we can't get metadata, use a generic filename
             filename = f"file_{i}.bin"
 
-        # Add prefix if provided
-        if prefix:
-            filename = f"{prefix}{filename}"
-
-        # Sanitize: never let an API-supplied name escape output_dir
+        # Sanitize the API-supplied name first: it is the untrusted part, and doing
+        # this after the join below would also strip any directory the caller's own
+        # prefix asks for.
         filename = os.path.basename(filename)
         if not filename or filename in {".", ".."}:
             filename = f"file_{i}.bin"
+
+        # Add prefix if provided
+        if prefix:
+            filename = f"{prefix}{filename}"
 
         # Construct full output path
         output_path = os.path.join(output_dir, filename)
