@@ -472,8 +472,11 @@ async def process_investigation(
             "mcp__sre__run_shell_command",
             "mcp__sre__get_container_logs",
         ],
-        # Same PreToolUse guardrails the notebook registers: block out-of-range
-        # DB_POOL_SIZE edits and deploys with an unsafe config.
+        # The same PreToolUse hooks the notebook registers, kept here so this example
+        # mirrors it. Treat them as a second layer only: whether a hook actually runs
+        # depends on how the SDK consumes this shape, so the DB_POOL_SIZE range and the
+        # unsafe-config deploy check are enforced inside the MCP tools themselves
+        # (sre_mcp_server.py), which is what actually blocks either operation.
         hooks={
             "PreToolUse": [
                 {
