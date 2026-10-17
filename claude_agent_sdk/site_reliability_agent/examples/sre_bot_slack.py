@@ -54,6 +54,23 @@ except ImportError:
 WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST", "127.0.0.1")
 WEBHOOK_PORT = int(os.environ.get("WEBHOOK_PORT", "8585"))
 PAGERDUTY_API_KEY = os.environ.get("PAGERDUTY_API_KEY", "")
+# This app's own Slack identity, resolved once. Needed because ANY Slack app or
+# incoming webhook sets bot_id, so "has a bot_id" does not mean "we wrote it".
+_SELF_IDS: set[str] = set()
+
+
+async def _self_slack_ids(client) -> set[str]:
+    """Return this app's own bot_id/user_id, or an empty set if it cannot be resolved."""
+    global _SELF_IDS
+    if not _SELF_IDS and client:
+        try:
+            auth = await client.auth_test()
+            _SELF_IDS = {v for v in (auth.get("bot_id"), auth.get("user_id")) if v}
+        except Exception as e:  # noqa: BLE001 - identity is advisory; fail closed below
+            print(f"Could not resolve this app's Slack identity: {e}")
+    return _SELF_IDS
+
+
 # Operator allowlist: only these Slack user IDs may drive the agent (it has pre-approved
 # config-edit and shell tools). Fail closed when unset.
 SRE_BOT_ALLOWED_USERS = {
@@ -611,15 +628,23 @@ async def handle_mention(event, say, client):
             messages = result.get("messages", [])
             if len(messages) > 1:  # More than just the current message
                 # The operator gate above only covers whoever triggered this run.
-                # Anyone in the channel can post in the thread, so carry forward
-                # only the bot's own messages and those from allowlisted operators
-                # - otherwise an outsider's text reaches the prompt of an agent
-                # holding config-edit and shell tools.
+                # Anyone in the channel can post in the thread, so carry forward only
+                # this app's own messages and those from allowlisted operators -
+                # otherwise an outsider's text reaches the prompt of an agent holding
+                # config-edit and shell tools.
+                #
+                # "Has a bot_id" is not proof we wrote it: Workflow Builder steps,
+                # incoming webhooks and every other installed app set one too. Match
+                # against our own identity instead. If that could not be resolved the
+                # set is empty, so this fails closed - we drop our own history rather
+                # than admit anyone else's.
+                self_ids = await _self_slack_ids(client)
                 history, omitted = [], 0
                 for msg in messages[:-1]:  # Exclude the current message
-                    if msg.get("bot_id"):
+                    bot_id, user_id = msg.get("bot_id"), msg.get("user")
+                    if (bot_id and bot_id in self_ids) or (user_id and user_id in self_ids):
                         sender = "Bot"
-                    elif msg.get("user") in SRE_BOT_ALLOWED_USERS:
+                    elif not bot_id and user_id in SRE_BOT_ALLOWED_USERS:
                         sender = "User"
                     else:
                         omitted += 1
