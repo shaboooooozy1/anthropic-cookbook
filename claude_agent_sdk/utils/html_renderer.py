@@ -14,6 +14,7 @@ Content types supported:
 import base64
 import html
 import pprint
+import re
 from typing import Any
 
 # Optional dependencies with graceful fallback
@@ -254,6 +255,47 @@ def _render_message_list(messages: list[Any]) -> str:
     return _render_code_block(pprint.pformat(messages))
 
 
+_SAFE_URL_SCHEMES = {"http", "https", "mailto"}
+_URL_SCHEME_RE = re.compile(r"^([a-zA-Z][a-zA-Z0-9+.\-]*):")
+
+
+def _url_is_safe(url: str) -> bool:
+    """True if url has no scheme (relative/fragment) or an allowlisted one.
+
+    Entities and whitespace are decoded and stripped first: a browser reads
+    `java&#115;cript:` and `java\tscript:` as `javascript:`, so testing the raw
+    attribute would miss both.
+    """
+    candidate = html.unescape(url)
+    candidate = "".join(ch for ch in candidate if not ch.isspace() and ch.isprintable())
+    match = _URL_SCHEME_RE.match(candidate)
+    if match is None:
+        return True
+    return match.group(1).lower() in _SAFE_URL_SCHEMES
+
+
+class _SafeUrlProcessor:
+    """Neutralise link and image targets with a scheme outside the allowlist.
+
+    Python-Markdown does no scheme filtering, so `[x](javascript:...)` from model or
+    tool output becomes a live href in a notebook rendered with display(HTML(...)).
+
+    Deliberately not a Treeprocessor subclass: markdown is an optional import here,
+    and the registry only needs an object exposing run(root).
+    """
+
+    _ATTRS = (("a", "href"), ("img", "src"))
+
+    def run(self, root):
+        for tag, attr in self._ATTRS:
+            for element in root.iter(tag):
+                value = element.get(attr)
+                if value is not None and not _url_is_safe(value):
+                    element.set(attr, "#")
+                    element.set("data-blocked-url", "unsafe-scheme")
+        return root
+
+
 def _render_markdown_text(text: str) -> str:
     """
     Render text as markdown HTML if the markdown library is available.
@@ -277,6 +319,7 @@ def _render_markdown_text(text: str) -> str:
         )
         md.preprocessors.deregister("html_block", strict=False)
         md.inlinePatterns.deregister("html", strict=False)
+        md.treeprocessors.register(_SafeUrlProcessor(), "safe_urls", 1)
         result: str = md.convert(text)
         return result
     # Fallback: preserve whitespace and escape HTML
