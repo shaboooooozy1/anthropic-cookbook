@@ -610,12 +610,28 @@ async def handle_mention(event, say, client):
             )
             messages = result.get("messages", [])
             if len(messages) > 1:  # More than just the current message
-                thread_context = "\n\n--- PREVIOUS CONVERSATION IN THIS THREAD ---\n"
+                # The operator gate above only covers whoever triggered this run.
+                # Anyone in the channel can post in the thread, so carry forward
+                # only the bot's own messages and those from allowlisted operators
+                # - otherwise an outsider's text reaches the prompt of an agent
+                # holding config-edit and shell tools.
+                history, omitted = [], 0
                 for msg in messages[:-1]:  # Exclude the current message
-                    sender = "Bot" if msg.get("bot_id") else "User"
+                    if msg.get("bot_id"):
+                        sender = "Bot"
+                    elif msg.get("user") in SRE_BOT_ALLOWED_USERS:
+                        sender = "User"
+                    else:
+                        omitted += 1
+                        continue
                     text = msg.get("text", "")[:2000]  # Limit each message
-                    thread_context += f"\n{sender}: {text}\n"
-                thread_context += "\n--- END OF PREVIOUS CONVERSATION ---\n\n"
+                    history.append(f"\n{sender}: {text}\n")
+                if history:
+                    thread_context = "\n\n--- PREVIOUS CONVERSATION IN THIS THREAD ---\n"
+                    thread_context += "".join(history)
+                    if omitted:
+                        thread_context += f"\n[{omitted} message(s) from non-operators omitted]\n"
+                    thread_context += "\n--- END OF PREVIOUS CONVERSATION ---\n\n"
         except Exception as e:
             print(f"Could not fetch thread history: {e}")
 
