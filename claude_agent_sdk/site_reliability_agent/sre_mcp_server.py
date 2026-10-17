@@ -606,15 +606,30 @@ COMPOSE_FILE = "config/docker-compose.yml"
 POOL_SIZE_MIN, POOL_SIZE_MAX = 5, 100
 
 
-def _db_pool_size_in(text: str) -> int | None:
-    """Return the DB_POOL_SIZE assigned anywhere in text, or None if absent/unparsable."""
+def _db_pool_size_in(text: str) -> str | None:
+    """Return the raw DB_POOL_SIZE value assigned in text, or None if it assigns none."""
     for line in text.splitlines():
-        key, _, value = line.partition("=")
-        if key.strip() == "DB_POOL_SIZE":
-            try:
-                return int(value.strip())
-            except ValueError:
-                return None
+        key, sep, value = line.partition("=")
+        if sep and key.strip() == "DB_POOL_SIZE":
+            return value.strip()
+    return None
+
+
+def _pool_size_problem(text: str) -> str | None:
+    """Describe what is wrong with the DB_POOL_SIZE in text, or None if it is fine.
+
+    An assignment that will not parse as an integer is a problem in its own right:
+    infra_setup.py reads this value with int(), so the container fails at startup.
+    """
+    raw = _db_pool_size_in(text)
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return f"DB_POOL_SIZE={raw!r} is not an integer"
+    if not (POOL_SIZE_MIN <= value <= POOL_SIZE_MAX):
+        return f"DB_POOL_SIZE={value} is outside the safe range ({POOL_SIZE_MIN}-{POOL_SIZE_MAX})"
     return None
 
 
@@ -2131,7 +2146,15 @@ async def edit_config_file(path: str, old_value: str, new_value: str) -> dict[st
 
         # run_shell_command's argv allowlist execs this exact file as the trusted demo
         # stack, so the agent must not be able to rewrite it. Reading it is still fine.
-        if full_path == (PROJECT_ROOT / COMPOSE_FILE).resolve():
+        #
+        # Compare by file identity, not by spelling: resolve() preserves the case it is
+        # given, so on a case-insensitive filesystem (APFS, which is where this demo
+        # runs under Docker Desktop) "config/Docker-compose.yml" opens the same file
+        # while comparing unequal. samefile needs both paths to exist, hence the guard.
+        compose_path = (PROJECT_ROOT / COMPOSE_FILE).resolve()
+        if full_path == compose_path or (
+            full_path.exists() and compose_path.exists() and full_path.samefile(compose_path)
+        ):
             return {
                 "content": [
                     {
@@ -2139,21 +2162,6 @@ async def edit_config_file(path: str, old_value: str, new_value: str) -> dict[st
                         "text": (
                             f"Error: {COMPOSE_FILE} is not editable."
                             " Edit config/api-server.env instead."
-                        ),
-                    }
-                ],
-                "isError": True,
-            }
-
-        pool_size = _db_pool_size_in(new_value)
-        if pool_size is not None and not (POOL_SIZE_MIN <= pool_size <= POOL_SIZE_MAX):
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": (
-                            f"BLOCKED: DB_POOL_SIZE={pool_size} is outside the safe"
-                            f" range ({POOL_SIZE_MIN}-{POOL_SIZE_MAX})."
                         ),
                     }
                 ],
@@ -2185,6 +2193,19 @@ async def edit_config_file(path: str, old_value: str, new_value: str) -> dict[st
             }
 
         new_content = content.replace(old_value, new_value, 1)
+
+        # Validate the resulting file, not new_value: a replace that swaps only the
+        # number ("20" -> "500") carries no "DB_POOL_SIZE=" text of its own, so
+        # inspecting new_value let an out-of-range value through. Only check when the
+        # edit actually changes the assignment, so an unrelated edit to a file that is
+        # already out of range is not blocked by it.
+        if _db_pool_size_in(new_content) != _db_pool_size_in(content):
+            problem = _pool_size_problem(new_content)
+            if problem:
+                return {
+                    "content": [{"type": "text", "text": f"BLOCKED: {problem}."}],
+                    "isError": True,
+                }
 
         with open(full_path, "w") as f:
             f.write(new_content)
@@ -2344,18 +2365,11 @@ async def run_shell_command(command: str) -> dict[str, Any]:
         if {"up", "restart"} & set(args) and ("api-server" in targeted or not targeted):
             env_path = PROJECT_ROOT / "config" / "api-server.env"
             if env_path.is_file():
-                deploy_pool = _db_pool_size_in(env_path.read_text())
-                if deploy_pool is not None and not (POOL_SIZE_MIN <= deploy_pool <= POOL_SIZE_MAX):
+                problem = _pool_size_problem(env_path.read_text())
+                if problem:
                     return {
                         "content": [
-                            {
-                                "type": "text",
-                                "text": (
-                                    f"BLOCKED: cannot deploy with DB_POOL_SIZE="
-                                    f"{deploy_pool} (safe range"
-                                    f" {POOL_SIZE_MIN}-{POOL_SIZE_MAX})."
-                                ),
-                            }
+                            {"type": "text", "text": f"BLOCKED: cannot deploy — {problem}."}
                         ],
                         "isError": True,
                     }
