@@ -1030,27 +1030,40 @@ Path("hooks/validate_pool_size.sh").write_text("""\
 # Validates that DB_POOL_SIZE changes stay within safe operating range.
 INPUT=$(cat)
 
-NEW_VALUE=$(echo "$INPUT" | python3 -c "
+VIOLATION=$(echo "$INPUT" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 # A PreToolUse hook's stdin carries the tool arguments under 'tool_input'.
-# Reading 'input' returned {} on every call, so NEW_VALUE was always empty
+# Reading 'input' returned {} on every call, so the value was always empty
 # and this guard exited 0 for out-of-range values instead of blocking them.
 inp = data.get('tool_input', {})
 replace_val = inp.get('new_value', '') or inp.get('replace', '')
-for part in replace_val.split('\\n'):
-    if 'DB_POOL_SIZE' in part:
-        val = part.split('=')[1].strip()
-        print(val)
+# Every assignment, not just the first: compose's env_file parser lets a later
+# duplicate key override an earlier one, and it honours an 'export ' prefix.
+for part in replace_val.splitlines():
+    key, sep, value = part.partition('=')
+    if not sep:
+        continue
+    key = key.strip()
+    if key.startswith('export '):
+        key = key[len('export '):].strip()
+    if key != 'DB_POOL_SIZE':
+        continue
+    raw = value.strip()
+    try:
+        size = int(raw)
+    except ValueError:
+        print('DB_POOL_SIZE=' + repr(raw) + ' is not a plain integer')
+        break
+    if not 5 <= size <= 100:
+        print('DB_POOL_SIZE=' + str(size) + ' is outside safe range (5-100)')
         break
 " 2>/dev/null)
 
-if [ -n "$NEW_VALUE" ]; then
-    if [ "$NEW_VALUE" -lt 5 ] 2>/dev/null || [ "$NEW_VALUE" -gt 100 ] 2>/dev/null; then
-        echo "BLOCKED: DB_POOL_SIZE=$NEW_VALUE is outside safe range (5-100)"
-        # 2, not 1: a PreToolUse hook denies the call on exit 2 specifically.
-        exit 2
-    fi
+if [ -n "$VIOLATION" ]; then
+    echo "BLOCKED: $VIOLATION"
+    # 2, not 1: a PreToolUse hook denies the call on exit 2 specifically.
+    exit 2
 fi
 exit 0
 """)
@@ -1070,12 +1083,32 @@ print(data.get('tool_input', {}).get('command', ''))
 if echo "$COMMAND" | grep -q "up.*api-server"; then
     CONFIG_FILE="config/api-server.env"
     if [ -f "$CONFIG_FILE" ]; then
-        POOL_SIZE=$(grep DB_POOL_SIZE "$CONFIG_FILE" | cut -d= -f2)
-        if [ -n "$POOL_SIZE" ] && \
-           { [ "$POOL_SIZE" -lt 5 ] 2>/dev/null || \
-             [ "$POOL_SIZE" -gt 100 ] 2>/dev/null; }; then
-            echo "BLOCKED: Cannot deploy with \
-DB_POOL_SIZE=$POOL_SIZE (safe range: 5-100)"
+        # Checked in python over every assignment: 'grep DB_POOL_SIZE | cut -d= -f2'
+        # fed a two-line string into '[ -lt ]', whose error 2>/dev/null swallowed, so
+        # a file with a duplicate key deployed unchecked.
+        VIOLATION=$(python3 -c "
+import sys
+for line in open(sys.argv[1]).read().splitlines():
+    key, sep, value = line.partition('=')
+    if not sep:
+        continue
+    key = key.strip()
+    if key.startswith('export '):
+        key = key[len('export '):].strip()
+    if key != 'DB_POOL_SIZE':
+        continue
+    raw = value.strip()
+    try:
+        size = int(raw)
+    except ValueError:
+        print('DB_POOL_SIZE=' + repr(raw) + ' is not a plain integer')
+        break
+    if not 5 <= size <= 100:
+        print('DB_POOL_SIZE=' + str(size) + ' is outside safe range (5-100)')
+        break
+" "$CONFIG_FILE" 2>/dev/null)
+        if [ -n "$VIOLATION" ]; then
+            echo "BLOCKED: Cannot deploy - $VIOLATION"
             # 2, not 1: a PreToolUse hook denies the call on exit 2 specifically.
             exit 2
         fi

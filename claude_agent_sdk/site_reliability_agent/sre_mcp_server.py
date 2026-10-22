@@ -606,30 +606,36 @@ COMPOSE_FILE = "config/docker-compose.yml"
 POOL_SIZE_MIN, POOL_SIZE_MAX = 5, 100
 
 
-def _db_pool_size_in(text: str) -> str | None:
-    """Return the raw DB_POOL_SIZE value assigned in text, or None if it assigns none."""
-    for line in text.splitlines():
-        key, sep, value = line.partition("=")
-        if sep and key.strip() == "DB_POOL_SIZE":
-            return value.strip()
-    return None
+# Matches the assignments compose's env_file parser honours: an optional "export "
+# prefix, and whitespace around the key. Reading only the first assignment was a
+# bypass — compose lets a later duplicate key override an earlier one, so a file
+# holding "DB_POOL_SIZE=20" and then "DB_POOL_SIZE=1" starts the container with 1.
+_DB_POOL_SIZE_LINE = re.compile(r"^[ \t]*(?:export[ \t]+)?DB_POOL_SIZE[ \t]*=(.*)$")
+
+
+def _db_pool_sizes_in(text: str) -> list[str]:
+    """Return every raw DB_POOL_SIZE value assigned in text, in file order."""
+    return [m.group(1).strip() for m in map(_DB_POOL_SIZE_LINE.match, text.splitlines()) if m]
 
 
 def _pool_size_problem(text: str) -> str | None:
-    """Describe what is wrong with the DB_POOL_SIZE in text, or None if it is fine.
+    """Describe what is wrong with any DB_POOL_SIZE in text, or None if all are fine.
 
-    An assignment that will not parse as an integer is a problem in its own right:
-    infra_setup.py reads this value with int(), so the container fails at startup.
+    Every assignment is checked, not just the one compose would honour, so this does
+    not depend on reproducing that precedence. A value that will not parse as a plain
+    integer is a problem in its own right: infra_setup.py reads it with int(), so the
+    container fails at startup. Quoted and comment-trailing values are refused on that
+    same ground rather than re-implementing the parser's unquoting here.
     """
-    raw = _db_pool_size_in(text)
-    if raw is None:
-        return None
-    try:
-        value = int(raw)
-    except ValueError:
-        return f"DB_POOL_SIZE={raw!r} is not an integer"
-    if not (POOL_SIZE_MIN <= value <= POOL_SIZE_MAX):
-        return f"DB_POOL_SIZE={value} is outside the safe range ({POOL_SIZE_MIN}-{POOL_SIZE_MAX})"
+    for raw in _db_pool_sizes_in(text):
+        try:
+            value = int(raw)
+        except ValueError:
+            return f"DB_POOL_SIZE={raw!r} is not a plain integer"
+        if not (POOL_SIZE_MIN <= value <= POOL_SIZE_MAX):
+            return (
+                f"DB_POOL_SIZE={value} is outside the safe range ({POOL_SIZE_MIN}-{POOL_SIZE_MAX})"
+            )
     return None
 
 
@@ -2196,10 +2202,12 @@ async def edit_config_file(path: str, old_value: str, new_value: str) -> dict[st
 
         # Validate the resulting file, not new_value: a replace that swaps only the
         # number ("20" -> "500") carries no "DB_POOL_SIZE=" text of its own, so
-        # inspecting new_value let an out-of-range value through. Only check when the
-        # edit actually changes the assignment, so an unrelated edit to a file that is
-        # already out of range is not blocked by it.
-        if _db_pool_size_in(new_content) != _db_pool_size_in(content):
+        # inspecting new_value let an out-of-range value through. Compare the whole
+        # list of assignments, so appending a second one counts as a change. Only
+        # check when the edit actually changes them, so an unrelated edit to a file
+        # that is already out of range is not blocked by it — the deploy guard in
+        # run_shell_command re-checks the file unconditionally.
+        if _db_pool_sizes_in(new_content) != _db_pool_sizes_in(content):
             problem = _pool_size_problem(new_content)
             if problem:
                 return {
