@@ -15,7 +15,7 @@ jobs:
   check-links:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
 
@@ -42,7 +42,7 @@ jobs:
 
       - name: Setup Python
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || steps.changed-files.outputs.has_changes == 'true'
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.11'
 
@@ -51,7 +51,7 @@ jobs:
         env:
           CHANGED_FILES: ${{ steps.changed-files.outputs.files }}
         run: |
-          pip install jupyter nbconvert
+          pip install "jupyter==1.1.1" "nbconvert==7.17.1"
           mkdir -p temp_md
 
           # Convert only changed notebooks
@@ -67,7 +67,7 @@ jobs:
       - name: Convert notebooks for link extraction (scheduled/manual - all files)
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: |
-          pip install jupyter nbconvert
+          pip install "jupyter==1.1.1" "nbconvert==7.17.1"
           mkdir -p temp_md
 
           for nb in $(find . -name "*.ipynb" -not -path "*/.*"); do
@@ -85,20 +85,53 @@ jobs:
         run: |
           FILES=""
 
+          # Paths are spliced into lychee-action's args (an eval sink), so only
+          # accept a conservative character set. This has to vet BOTH sources
+          # below: a converted notebook's name comes from a PR-controlled
+          # *.ipynb stem, so it is no more trustworthy than a changed path.
+          # The set also excludes newlines, which keeps a filename from forging
+          # extra key=value lines in $GITHUB_OUTPUT.
+          is_safe_path() {
+            case "$1" in
+              "") return 1 ;;
+              # A leading '-' makes lychee read the path as an option (e.g.
+              # '-p./x.md' as --preprocess), and every character in it passes
+              # the class below. The `--` in args: is the real fix; this keeps
+              # such a path out of the list in the first place.
+              -*) return 1 ;;
+              *[!A-Za-z0-9._/-]*) return 1 ;;
+            esac
+            return 0
+          }
+
           # Add all changed markdown files (from any directory)
           while IFS= read -r f; do
-            if [ -n "$f" ] && [ -f "$f" ]; then
+            if ! is_safe_path "$f"; then
+              echo "Skipping path with unsafe characters: $f"
+              continue
+            fi
+            if [ -f "$f" ]; then
               FILES="$FILES $f"
             fi
           done < <(echo "$CHANGED_FILES" | grep '\.md$')
 
-          # Add converted notebooks
-          if [ -d "temp_md" ] && [ -n "$(ls -A temp_md/*.md 2>/dev/null)" ]; then
-            FILES="$FILES temp_md/*.md"
-          fi
+          # Add converted notebooks. Expand the glob HERE and vet each result:
+          # appending the literal string "temp_md/*.md" instead left the
+          # filenames to be resolved by a later unquoted expansion, which put
+          # unvetted notebook stems straight into file_args.
+          for f in temp_md/*.md; do
+            [ -f "$f" ] || continue
+            if ! is_safe_path "$f"; then
+              echo "Skipping converted notebook with unsafe characters: $f"
+              continue
+            fi
+            FILES="$FILES $f"
+          done
 
-          # Remove leading/trailing whitespace
-          FILES=$(echo $FILES | xargs)
+          # Strip the single leading space the accumulator adds. Deliberately
+          # not `echo $FILES | xargs`: an unquoted expansion is what reopened
+          # the injection above, and every element here is already vetted.
+          FILES="${FILES# }"
 
           echo "Prepared files for lychee: $FILES"
 
@@ -113,12 +146,13 @@ jobs:
       - name: Check Links with Lychee (PR - changed files only)
         if: github.event_name == 'pull_request' && steps.changed-files.outputs.has_changes == 'true' && steps.file-list.outputs.has_files == 'true'
         id: lychee
-        uses: lycheeverse/lychee-action@v2
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
           args: |
             --config lychee.toml
             --format markdown
             --no-progress
+            --
             ${{ steps.file-list.outputs.file_args }}
           output: lychee-report.md
           fail: false
@@ -127,12 +161,13 @@ jobs:
       - name: Check Links with Lychee (scheduled/manual - all files)
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         id: lychee-full
-        uses: lycheeverse/lychee-action@v2
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
           args: |
             --config lychee.toml
             --format markdown
             --no-progress
+            --
             skills/**/*.md
             temp_md/*.md
             README.md
@@ -142,14 +177,14 @@ jobs:
       
       - name: Comment PR with results
         if: github.event_name == 'pull_request' && steps.lychee.outputs.exit_code != 0
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405 # v2.9.4
         with:
           header: link-check
           path: lychee-report.md
       
       - name: Upload link check results
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: link-check-results
           path: |

@@ -14,12 +14,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0  # Need full history to diff against base
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           enable-cache: true
 
@@ -75,7 +75,7 @@ jobs:
 
             # Generate diff (suppress errors if file doesn't exist in base)
             # Ignore metadata, attachments, IDs, and other non-content changes
-            uvx --from nbdime nbdiff --no-color -A -M -I -D \
+            uvx --from "nbdime==4.0.4" nbdiff --no-color -A -M -I -D \
               $BASE_SHA $HEAD_SHA "$notebook" 2>/dev/null >> diff_comment.md || echo "New file" >> diff_comment.md
 
             echo '```' >> diff_comment.md
