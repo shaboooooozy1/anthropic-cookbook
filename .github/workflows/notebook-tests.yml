@@ -189,18 +189,36 @@ jobs:
           mkdir -p execution_outputs
           EXEC_FAILED=0
 
+          # The notebooks allowed to opt out of execution, one quoted argument each.
+          # A notebook's own metadata.ci.skip_execution is NOT sufficient: it travels
+          # inside the notebook under test, so a notebook could grant itself the
+          # exemption and leave this required check green while never executing.
+          # Widening this list means editing the workflow, which shows up in review.
+          execution_opt_out_allowed() {
+            printf '%s\n' \
+              'claude_agent_sdk/03_The_site_reliability_agent.ipynb' \
+              | grep -Fxq -- "$1"
+          }
+
           while IFS= read -r notebook; do
             if [ -z "$notebook" ]; then
               continue
             fi
 
             # Notebooks that cannot run headless opt out via notebook metadata
-            # (metadata.ci.skip_execution). Execution is blocking now, so without an
-            # opt-out a required check goes red on a notebook that can never pass -
-            # e.g. one needing a live Docker stack or files outside its own directory,
-            # since nbconvert runs the kernel in the notebook's directory.
+            # (metadata.ci.skip_execution) AND the allowlist above. Execution is
+            # blocking now, so without an opt-out a required check goes red on a
+            # notebook that can never pass - e.g. one needing a live Docker stack or
+            # files outside its own directory, since nbconvert runs the kernel in the
+            # notebook's directory. An opt-out that is not allowlisted fails the job
+            # rather than skipping quietly, so self-certification turns a check red.
             if [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("metadata",{}).get("ci",{}).get("skip_execution", False))' "$notebook")" = "True" ]; then
-              echo "⏭️ Skipped (opted out of execution): $notebook" >> $GITHUB_STEP_SUMMARY
+              if execution_opt_out_allowed "$notebook"; then
+                echo "⏭️ Skipped (opted out of execution): $notebook" >> $GITHUB_STEP_SUMMARY
+                continue
+              fi
+              echo "❌ $notebook sets metadata.ci.skip_execution but is not in this workflow's opt-out allowlist" >> $GITHUB_STEP_SUMMARY
+              EXEC_FAILED=$((EXEC_FAILED + 1))
               continue
             fi
 
