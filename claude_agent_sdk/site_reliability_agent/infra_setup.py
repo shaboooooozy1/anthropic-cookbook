@@ -1030,38 +1030,45 @@ Path("hooks/validate_pool_size.sh").write_text("""\
 # Validates that DB_POOL_SIZE changes stay within safe operating range.
 INPUT=$(cat)
 
-VIOLATION=$(echo "$INPUT" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-# A PreToolUse hook's stdin carries the tool arguments under 'tool_input'.
-# Reading 'input' returned {} on every call, so the value was always empty
-# and this guard exited 0 for out-of-range values instead of blocking them.
-inp = data.get('tool_input', {})
-replace_val = inp.get('new_value', '') or inp.get('replace', '')
-# Every assignment, not just the first: compose's env_file parser lets a later
-# duplicate key override an earlier one, and it honours an 'export ' prefix.
-for part in replace_val.splitlines():
-    key, sep, value = part.partition('=')
-    if not sep:
-        continue
-    key = key.strip()
-    if key.startswith('export '):
-        key = key[len('export '):].strip()
-    if key != 'DB_POOL_SIZE':
-        continue
-    raw = value.strip()
-    try:
-        size = int(raw)
-    except ValueError:
-        print('DB_POOL_SIZE=' + repr(raw) + ' is not a plain integer')
-        break
-    if not 5 <= size <= 100:
-        print('DB_POOL_SIZE=' + str(size) + ' is outside safe range (5-100)')
-        break
+# Mirrors the check in sre_mcp_server.py: printable ASCII only, compose's three
+# assignment spellings, and a plain integer in range. Prints exactly OK or the
+# problem, and anything else — including nothing at all — blocks, so a crash in
+# here cannot read as "nothing wrong" (its stderr goes to /dev/null, and the old
+# version treated empty output as a pass).
+VERDICT=$(echo "$INPUT" | python3 -c "
+import sys, json, re
+LINE = re.compile(r'^[ \\t]*(?:export[ \\t]+)?DB_POOL_SIZE[ \\t]*[:=](.*)')
+try:
+    # A PreToolUse hook's stdin carries the tool arguments under 'tool_input'.
+    # Reading 'input' returned {} on every call, so the value was always empty
+    # and this guard exited 0 for out-of-range values instead of blocking them.
+    inp = json.load(sys.stdin).get('tool_input', {})
+    text = inp.get('new_value', '') or inp.get('replace', '')
+    problem = ''
+    if not re.fullmatch(r'[\\t\\n\\r\\x20-\\x7e]*', text):
+        problem = 'replacement text may only contain printable ASCII, tabs and newlines'
+    for line in text.split('\\n'):
+        if problem:
+            break
+        found = LINE.match(line)
+        if not found:
+            continue
+        raw = found.group(1).strip()
+        try:
+            size = int(raw)
+        except ValueError:
+            problem = 'DB_POOL_SIZE=' + repr(raw) + ' is not a plain integer'
+            break
+        if not 5 <= size <= 100:
+            problem = 'DB_POOL_SIZE=' + str(size) + ' is outside safe range (5-100)'
+            break
+    print(problem if problem else 'OK')
+except Exception as exc:
+    print('hook could not read its input (' + str(exc) + ')')
 " 2>/dev/null)
 
-if [ -n "$VIOLATION" ]; then
-    echo "BLOCKED: $VIOLATION"
+if [ "$VERDICT" != "OK" ]; then
+    echo "BLOCKED: ${VERDICT:-hook produced no verdict}"
     # 2, not 1: a PreToolUse hook denies the call on exit 2 specifically.
     exit 2
 fi
@@ -1080,35 +1087,45 @@ data = json.load(sys.stdin)
 print(data.get('tool_input', {}).get('command', ''))
 " 2>/dev/null)
 
-if echo "$COMMAND" | grep -q "up.*api-server"; then
+# Any up or restart, whatever services it names: compose starts a target's
+# dependency closure, so "up -d prometheus" starts api-server too. The old
+# matcher needed the literal "api-server" after "up" and so missed that, a
+# whole-stack "up -d", and every "restart".
+if echo "$COMMAND" | grep -Eq '(^| )(up|restart)( |$)'; then
     CONFIG_FILE="config/api-server.env"
     if [ -f "$CONFIG_FILE" ]; then
-        # Checked in python over every assignment: 'grep DB_POOL_SIZE | cut -d= -f2'
-        # fed a two-line string into '[ -lt ]', whose error 2>/dev/null swallowed, so
-        # a file with a duplicate key deployed unchecked.
-        VIOLATION=$(python3 -c "
-import sys
-for line in open(sys.argv[1]).read().splitlines():
-    key, sep, value = line.partition('=')
-    if not sep:
-        continue
-    key = key.strip()
-    if key.startswith('export '):
-        key = key[len('export '):].strip()
-    if key != 'DB_POOL_SIZE':
-        continue
-    raw = value.strip()
-    try:
-        size = int(raw)
-    except ValueError:
-        print('DB_POOL_SIZE=' + repr(raw) + ' is not a plain integer')
-        break
-    if not 5 <= size <= 100:
-        print('DB_POOL_SIZE=' + str(size) + ' is outside safe range (5-100)')
-        break
+        # Checked in python, which prints exactly OK or the problem: 'grep DB_POOL_SIZE |
+        # cut -d= -f2' fed a two-line string into '[ -lt ]', whose error 2>/dev/null
+        # swallowed, so a duplicate key deployed unchecked. Mirrors the check in
+        # sre_mcp_server.py.
+        VERDICT=$(python3 -c "
+import sys, re
+LINE = re.compile(r'^[ \\t]*(?:export[ \\t]+)?DB_POOL_SIZE[ \\t]*[:=](.*)')
+try:
+    text = open(sys.argv[1], encoding='utf-8').read()
+    problem = ''
+    if not re.fullmatch(r'[\\t\\n\\r\\x20-\\x7e]*', text):
+        problem = 'config/api-server.env has characters outside printable ASCII'
+    values = [m.group(1).strip() for m in map(LINE.match, text.split('\\n')) if m]
+    if not problem and len(values) > 1:
+        problem = 'config/api-server.env assigns DB_POOL_SIZE ' + str(len(values)) + ' times'
+    for raw in values:
+        if problem:
+            break
+        try:
+            size = int(raw)
+        except ValueError:
+            problem = 'DB_POOL_SIZE=' + repr(raw) + ' is not a plain integer'
+            break
+        if not 5 <= size <= 100:
+            problem = 'DB_POOL_SIZE=' + str(size) + ' is outside safe range (5-100)'
+            break
+    print(problem if problem else 'OK')
+except Exception as exc:
+    print('could not read config/api-server.env (' + str(exc) + ')')
 " "$CONFIG_FILE" 2>/dev/null)
-        if [ -n "$VIOLATION" ]; then
-            echo "BLOCKED: Cannot deploy - $VIOLATION"
+        if [ "$VERDICT" != "OK" ]; then
+            echo "BLOCKED: Cannot deploy - ${VERDICT:-hook produced no verdict}"
             # 2, not 1: a PreToolUse hook denies the call on exit 2 specifically.
             exit 2
         fi
