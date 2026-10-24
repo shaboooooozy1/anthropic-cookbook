@@ -609,17 +609,29 @@ ENV_FILE = "config/api-server.env"
 # second layer the caller may not have wired up, so the tools enforce it themselves.
 POOL_SIZE_MIN, POOL_SIZE_MAX = 5, 100
 
-# Everything the env file is allowed to contain. Deliberately far stricter than the
-# parser it guards, because trying to match that parser is what kept failing: compose
-# strips a BOM and any Go unicode.IsSpace run before a key, so "\u00a0DB_POOL_SIZE=1"
-# and "\ufeffDB_POOL_SIZE=1" are assignments it honours that an ASCII-anchored regex
-# cannot see at all. Refusing the whole file closes those — and any codepoint not
-# thought of yet — in one rule. infra_setup.py generates this file as plain ASCII.
-_ENV_FILE_ALLOWED = re.compile(r"^[\t\n\r\x20-\x7e]*\Z")
+# Everything a line that can carry an assignment is allowed to contain. Deliberately
+# far stricter than the parser it guards, because trying to match that parser is what
+# kept failing: compose strips a BOM and any Go unicode.IsSpace run before a key, so
+# "\u00a0DB_POOL_SIZE=1" and "\ufeffDB_POOL_SIZE=1" are assignments it honours that an
+# ASCII-anchored regex cannot see at all. Refusing such a line closes those — and any
+# codepoint not thought of yet — in one rule.
+_ENV_FILE_ALLOWED_LINE = re.compile(r"^[\t\r\x20-\x7e]*\Z")
+
+# Blank and comment lines are exempt from that rule: a comment cannot become an
+# assignment, and the generated file has prose in its comments. Comment-ness is decided
+# conservatively, which is the load-bearing part — compose strips leading Unicode
+# whitespace before testing for "#", so a line led by non-ASCII whitespace ("\u00a0# x")
+# is NOT a comment here. It fails the rule above instead, which is the safe side.
+_ENV_FILE_SKIPPABLE_LINE = re.compile(r"^[ \t]*(?:#.*)?\Z")
 
 # compose honours "export KEY=v" (with any run of spaces or tabs) and godotenv's
 # "KEY: v" form as well as "KEY=v".
 _DB_POOL_SIZE_LINE = re.compile(r"^[ \t]*(?:export[ \t]+)?DB_POOL_SIZE[ \t]*[:=](.*)")
+
+
+def _db_pool_sizes_in(text: str) -> list[str]:
+    """Return every raw DB_POOL_SIZE value assigned in text, in file order."""
+    return [m.group(1).strip() for m in map(_DB_POOL_SIZE_LINE.match, text.split("\n")) if m]
 
 
 def _env_file_problem(text: str) -> str | None:
@@ -635,9 +647,12 @@ def _env_file_problem(text: str) -> str | None:
     problem in its own right: infra_setup.py reads it with int(), so the container
     fails at startup.
     """
-    if not _ENV_FILE_ALLOWED.match(text):
-        return f"{ENV_FILE} may only contain printable ASCII, tabs and newlines"
-    values = [m.group(1).strip() for m in map(_DB_POOL_SIZE_LINE.match, text.split("\n")) if m]
+    for line in text.split("\n"):
+        if _ENV_FILE_SKIPPABLE_LINE.match(line):
+            continue
+        if not _ENV_FILE_ALLOWED_LINE.match(line):
+            return f"{ENV_FILE} may only use printable ASCII outside its comments"
+    values = _db_pool_sizes_in(text)
     if len(values) > 1:
         return f"{ENV_FILE} assigns DB_POOL_SIZE {len(values)} times"
     for raw in values:
@@ -2226,7 +2241,10 @@ async def edit_config_file(path: str, old_value: str, new_value: str) -> dict[st
         env_path = (PROJECT_ROOT / ENV_FILE).resolve()
         if full_path == env_path or (env_path.exists() and full_path.samefile(env_path)):
             problem = _env_file_problem(new_content)
-            if problem and problem != _env_file_problem(content):
+            if problem and (
+                problem != _env_file_problem(content)
+                or _db_pool_sizes_in(new_content) != _db_pool_sizes_in(content)
+            ):
                 return {
                     "content": [{"type": "text", "text": f"BLOCKED: {problem}."}],
                     "isError": True,

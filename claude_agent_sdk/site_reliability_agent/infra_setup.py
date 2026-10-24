@@ -153,7 +153,7 @@ Path("config/api-server.env").write_text("""\
 DB_POOL_SIZE=20
 DB_POOL_TIMEOUT=2
 
-# Database connection — demo only, change for any non-local deployment
+# Database connection - demo only, change for any non-local deployment
 DB_HOST=postgres
 DB_PORT=5432
 DB_NAME=demo
@@ -173,7 +173,7 @@ Path("config/api-server.env.backup").write_text("""\
 DB_POOL_SIZE=20
 DB_POOL_TIMEOUT=2
 
-# Database connection — demo only, change for any non-local deployment
+# Database connection - demo only, change for any non-local deployment
 DB_HOST=postgres
 DB_PORT=5432
 DB_NAME=demo
@@ -1030,14 +1030,16 @@ Path("hooks/validate_pool_size.sh").write_text("""\
 # Validates that DB_POOL_SIZE changes stay within safe operating range.
 INPUT=$(cat)
 
-# Mirrors the check in sre_mcp_server.py: printable ASCII only, compose's three
-# assignment spellings, and a plain integer in range. Prints exactly OK or the
-# problem, and anything else — including nothing at all — blocks, so a crash in
-# here cannot read as "nothing wrong" (its stderr goes to /dev/null, and the old
-# version treated empty output as a pass).
+# Mirrors the check in sre_mcp_server.py: printable ASCII outside comments,
+# compose's three assignment spellings, and a plain integer in range. Prints
+# exactly OK or the problem, and anything else — including nothing at all —
+# blocks, so a crash in here cannot read as "nothing wrong" (its stderr goes to
+# /dev/null, and the old version treated empty output as a pass).
 VERDICT=$(echo "$INPUT" | python3 -c "
 import sys, json, re
 LINE = re.compile(r'^[ \\t]*(?:export[ \\t]+)?DB_POOL_SIZE[ \\t]*[:=](.*)')
+SKIP = re.compile(r'^[ \\t]*(?:#.*)?\\Z')
+OKLINE = re.compile(r'^[\\t\\r\\x20-\\x7e]*\\Z')
 try:
     # A PreToolUse hook's stdin carries the tool arguments under 'tool_input'.
     # Reading 'input' returned {} on every call, so the value was always empty
@@ -1045,10 +1047,13 @@ try:
     inp = json.load(sys.stdin).get('tool_input', {})
     text = inp.get('new_value', '') or inp.get('replace', '')
     problem = ''
-    if not re.fullmatch(r'[\\t\\n\\r\\x20-\\x7e]*', text):
-        problem = 'replacement text may only contain printable ASCII, tabs and newlines'
     for line in text.split('\\n'):
         if problem:
+            break
+        if SKIP.match(line):
+            continue
+        if not OKLINE.match(line):
+            problem = 'replacement text may only use printable ASCII outside comments'
             break
         found = LINE.match(line)
         if not found:
@@ -1101,11 +1106,16 @@ if echo "$COMMAND" | grep -Eq '(^| )(up|restart)( |$)'; then
         VERDICT=$(python3 -c "
 import sys, re
 LINE = re.compile(r'^[ \\t]*(?:export[ \\t]+)?DB_POOL_SIZE[ \\t]*[:=](.*)')
+SKIP = re.compile(r'^[ \\t]*(?:#.*)?\\Z')
+OKLINE = re.compile(r'^[\\t\\r\\x20-\\x7e]*\\Z')
 try:
     text = open(sys.argv[1], encoding='utf-8').read()
     problem = ''
-    if not re.fullmatch(r'[\\t\\n\\r\\x20-\\x7e]*', text):
-        problem = 'config/api-server.env has characters outside printable ASCII'
+    for line in text.split('\\n'):
+        if SKIP.match(line) or OKLINE.match(line):
+            continue
+        problem = 'config/api-server.env uses non-ASCII outside its comments'
+        break
     values = [m.group(1).strip() for m in map(LINE.match, text.split('\\n')) if m]
     if not problem and len(values) > 1:
         problem = 'config/api-server.env assigns DB_POOL_SIZE ' + str(len(values)) + ' times'
