@@ -57,13 +57,23 @@ jobs:
           # scripts/validate_notebooks.py only checks the .ipynb paths passed as
           # arguments (with none it prints "No notebooks to validate" and exits 0),
           # so hand it the notebooks changed in this PR / push.
+          # The if-conditions (exempt from -e) make a git failure fail the step
+          # instead of being masked into "no notebooks changed" by `|| echo ""`.
           if [ "$EVENT_NAME" = "pull_request" ]; then
             git fetch origin "$BASE_REF"
             # --diff-filter=d excludes deleted notebooks, which cannot be read.
-            CHANGED_NOTEBOOKS=$(git diff --name-only --diff-filter=d "origin/$BASE_REF"...HEAD | grep '\.ipynb$' || echo "")
+            if ! DIFF_OUT=$(git diff --name-only --diff-filter=d "origin/$BASE_REF"...HEAD); then
+              echo "::error::git diff origin/$BASE_REF...HEAD failed; cannot determine changed notebooks"
+              exit 1
+            fi
           else
-            CHANGED_NOTEBOOKS=$(git diff --name-only --diff-filter=d HEAD~1 HEAD | grep '\.ipynb$' || echo "")
+            if ! DIFF_OUT=$(git diff --name-only --diff-filter=d HEAD~1 HEAD); then
+              echo "::error::git diff HEAD~1 HEAD failed; cannot determine changed notebooks"
+              exit 1
+            fi
           fi
+          # grep exits 1 when nothing matches; that is the only status deliberately discarded.
+          CHANGED_NOTEBOOKS=$(printf '%s\n' "$DIFF_OUT" | grep '\.ipynb$' || true)
 
           if [ -z "$CHANGED_NOTEBOOKS" ]; then
             echo "No notebooks changed; nothing to validate"
@@ -122,6 +132,16 @@ jobs:
             --allowedTools "Bash(gh pr comment:*),Bash(cat:*),Read"
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
+
+      # The validate step runs with continue-on-error so the Claude summary
+      # above can post first; this gate makes the result count toward the job.
+      # `!= 'false'` also fails the job when the validate step crashed before
+      # writing the output.
+      - name: Fail job on validation issues
+        if: steps.validate.outputs.has_issues != 'false'
+        run: |
+          echo "::error::Notebook validation reported issues or did not complete; see the 'Validate notebook structure' step."
+          exit 1
 
       # Only run API tests on main branch or for maintainers (costs money)
       # TODO: this step still reads the static ANTHROPIC_API_KEY secret. The
