@@ -1,6 +1,6 @@
 """Regression tests for ``scripts/validate_all_notebooks.py``'s auto-fix path.
 
-``fix_deprecated_models`` previously tracked a single ``modified`` flag across
+The model auto-fixer previously tracked a single ``modified`` flag across
 the whole notebook instead of per-cell. Once any cell matched a deprecated
 model id, every later code cell got unconditionally overwritten with
 ``cell["source"] = new_source`` -- and for cells whose ``source`` was a plain
@@ -43,33 +43,33 @@ def make_validator(tmp_path, monkeypatch):
     return validate_all_notebooks.NotebookValidator()
 
 
-def test_fix_deprecated_models_replaces_list_source(tmp_path, monkeypatch):
+def test_fix_older_models_replaces_list_source(tmp_path, monkeypatch):
     validator = make_validator(tmp_path, monkeypatch)
     nb_path = write_notebook(
         tmp_path / "nb.ipynb",
         [code_cell(['model = "claude-opus-4-1"\n'])],
     )
 
-    assert validator.fix_deprecated_models(nb_path) is True
+    assert validator.fix_older_models(nb_path) is True
 
     nb = json.loads(nb_path.read_text())
-    assert nb["cells"][0]["source"] == ['model = "claude-opus-4-6"\n']
+    assert nb["cells"][0]["source"] == ['model = "claude-opus-5-5"\n']
 
 
-def test_fix_deprecated_models_replaces_string_source(tmp_path, monkeypatch):
+def test_fix_older_models_replaces_string_source(tmp_path, monkeypatch):
     validator = make_validator(tmp_path, monkeypatch)
     nb_path = write_notebook(
         tmp_path / "nb.ipynb",
         [code_cell('model = "claude-opus-4-1"')],
     )
 
-    assert validator.fix_deprecated_models(nb_path) is True
+    assert validator.fix_older_models(nb_path) is True
 
     nb = json.loads(nb_path.read_text())
-    assert nb["cells"][0]["source"] == 'model = "claude-opus-4-6"'
+    assert nb["cells"][0]["source"] == 'model = "claude-opus-5-5"'
 
 
-def test_fix_deprecated_models_does_not_corrupt_later_string_cell(tmp_path, monkeypatch):
+def test_fix_older_models_does_not_corrupt_later_string_cell(tmp_path, monkeypatch):
     """A later unrelated cell with string-typed source must survive untouched.
 
     Regression test for the bug described in the module docstring: only the
@@ -86,22 +86,22 @@ def test_fix_deprecated_models_does_not_corrupt_later_string_cell(tmp_path, monk
         ],
     )
 
-    assert validator.fix_deprecated_models(nb_path) is True
+    assert validator.fix_older_models(nb_path) is True
 
     nb = json.loads(nb_path.read_text())
-    assert nb["cells"][0]["source"] == ['model = "claude-opus-4-6"\n']
+    assert nb["cells"][0]["source"] == ['model = "claude-opus-5-5"\n']
     # The unrelated cell keeps its original string type and full content --
     # it must not be split into single-character list entries.
     assert nb["cells"][1]["source"] == unrelated_source
 
 
-def test_fix_deprecated_models_no_match_returns_false(tmp_path, monkeypatch):
+def test_fix_older_models_no_match_returns_false(tmp_path, monkeypatch):
     validator = make_validator(tmp_path, monkeypatch)
     nb_path = write_notebook(
         tmp_path / "nb.ipynb",
-        [code_cell('model = "claude-sonnet-4-6"')],
+        [code_cell('model = "claude-sonnet-5-5"')],
     )
 
-    assert validator.fix_deprecated_models(nb_path) is False
+    assert validator.fix_older_models(nb_path) is False
     nb = json.loads(nb_path.read_text())
-    assert nb["cells"][0]["source"] == 'model = "claude-sonnet-4-6"'
+    assert nb["cells"][0]["source"] == 'model = "claude-sonnet-5-5"'

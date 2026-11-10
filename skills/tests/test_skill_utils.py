@@ -118,10 +118,10 @@ class TestCreateSkill:
         monkeypatch.setattr(skill_utils, "files_from_dir", lambda p: [])
 
         client = MagicMock()
-        client.beta.skills.create.return_value = SimpleNamespace(
+        client.skills.create.return_value = SimpleNamespace(
             id="skill_123",
-            display_title="Demo",
-            latest_version="0.0.1",
+            display_name="Demo",
+            latest_version_id="0.0.1",
             created_at="2025-01-01T00:00:00Z",
             source="custom",
         )
@@ -135,7 +135,7 @@ class TestCreateSkill:
         skill_dir = make_skill_dir(tmp_path)
         monkeypatch.setattr(skill_utils, "files_from_dir", lambda p: [])
         client = MagicMock()
-        client.beta.skills.create.side_effect = RuntimeError("boom")
+        client.skills.create.side_effect = RuntimeError("boom")
 
         result = skill_utils.create_skill(client, str(skill_dir), "Demo")
         assert result["success"] is False
@@ -145,12 +145,12 @@ class TestCreateSkill:
 class TestListAndVersions:
     def test_list_custom_skills_maps_fields(self):
         client = MagicMock()
-        client.beta.skills.list.return_value = SimpleNamespace(
+        client.skills.list.return_value = SimpleNamespace(
             data=[
                 SimpleNamespace(
                     id="s1",
-                    display_title="One",
-                    latest_version="1",
+                    display_name="One",
+                    latest_version_id="1",
                     created_at="t",
                     updated_at="t2",
                 )
@@ -160,8 +160,8 @@ class TestListAndVersions:
         assert skills == [
             {
                 "skill_id": "s1",
-                "display_title": "One",
-                "latest_version": "1",
+                "display_name": "One",
+                "latest_version_id": "1",
                 "created_at": "t",
                 "updated_at": "t2",
             }
@@ -169,55 +169,52 @@ class TestListAndVersions:
 
     def test_list_custom_skills_returns_empty_on_error(self, capsys):
         client = MagicMock()
-        client.beta.skills.list.side_effect = RuntimeError("nope")
+        client.skills.list.side_effect = RuntimeError("nope")
         assert skill_utils.list_custom_skills(client) == []
         assert "Error listing skills" in capsys.readouterr().out
 
     def test_get_skill_version_resolves_latest(self):
         client = MagicMock()
-        client.beta.skills.retrieve.return_value = SimpleNamespace(latest_version="3")
-        client.beta.skills.versions.retrieve.return_value = SimpleNamespace(
-            version="3",
+        client.skills.retrieve.return_value = SimpleNamespace(latest_version_id="3")
+        client.skills.versions.retrieve.return_value = SimpleNamespace(
+            id="3",
             skill_id="s1",
             name="demo",
             description="d",
-            directory="/d",
             created_at="t",
         )
         info = skill_utils.get_skill_version(client, "s1")
-        assert info["version"] == "3"
-        client.beta.skills.versions.retrieve.assert_called_once_with(skill_id="s1", version="3")
+        assert info["version_id"] == "3"
+        client.skills.versions.retrieve.assert_called_once_with(skill_id="s1", version="3")
 
     def test_get_skill_version_returns_none_on_error(self, capsys):
         client = MagicMock()
-        client.beta.skills.retrieve.side_effect = RuntimeError("x")
+        client.skills.retrieve.side_effect = RuntimeError("x")
         assert skill_utils.get_skill_version(client, "s1") is None
 
     def test_list_skill_versions_returns_empty_on_error(self):
         client = MagicMock()
-        client.beta.skills.versions.list.side_effect = RuntimeError("x")
+        client.skills.versions.list.side_effect = RuntimeError("x")
         assert skill_utils.list_skill_versions(client, "s1") == []
 
 
 class TestDeleteSkill:
-    def test_deletes_versions_then_skill(self):
+    def test_deletes_skill_with_cascading_versions(self):
         client = MagicMock()
-        client.beta.skills.versions.list.return_value = SimpleNamespace(
-            data=[SimpleNamespace(version="1"), SimpleNamespace(version="2")]
-        )
         assert skill_utils.delete_skill(client, "s1", delete_versions=True) is True
-        assert client.beta.skills.versions.delete.call_count == 2
-        client.beta.skills.delete.assert_called_once_with("s1")
+        client.skills.versions.list.assert_not_called()
+        client.skills.versions.delete.assert_not_called()
+        client.skills.delete.assert_called_once_with("s1")
 
     def test_skips_version_deletion_when_disabled(self):
         client = MagicMock()
         assert skill_utils.delete_skill(client, "s1", delete_versions=False) is True
-        client.beta.skills.versions.list.assert_not_called()
-        client.beta.skills.delete.assert_called_once_with("s1")
+        client.skills.versions.list.assert_not_called()
+        client.skills.delete.assert_called_once_with("s1")
 
     def test_returns_false_on_error(self, capsys):
         client = MagicMock()
-        client.beta.skills.delete.side_effect = RuntimeError("boom")
+        client.skills.delete.side_effect = RuntimeError("boom")
         assert skill_utils.delete_skill(client, "s1", delete_versions=False) is False
         assert "Error deleting skill" in capsys.readouterr().out
 
@@ -231,7 +228,7 @@ class TestTestSkill:
 
         _, kwargs = client.beta.messages.create.call_args
         # Guards against silent model drift in the example helper.
-        assert kwargs["model"] == "claude-sonnet-4-6"
+        assert kwargs["model"] == "claude-sonnet-5-5"
         assert "skills-2025-10-02" in kwargs["betas"]
         assert kwargs["container"]["skills"] == [
             {"type": "custom", "skill_id": "s1", "version": "latest"}
@@ -253,9 +250,9 @@ class TestPrintSkillSummary:
     def test_prints_fields(self, capsys):
         skill_utils.print_skill_summary(
             {
-                "display_title": "Demo",
+                "display_name": "Demo",
                 "skill_id": "s1",
-                "latest_version": "1",
+                "latest_version_id": "1",
                 "source": "custom",
                 "created_at": "t",
             }
