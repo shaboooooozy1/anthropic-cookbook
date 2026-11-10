@@ -81,7 +81,7 @@ class TestExtractFileIds:
 class TestDownloadFile:
     def test_creates_directory_and_writes_bytes(self, tmp_path: Path):
         client = MagicMock()
-        client.beta.files.download.return_value = io.BytesIO(b"payload-data")
+        client.files.download.return_value = io.BytesIO(b"payload-data")
 
         out = tmp_path / "nested" / "out.bin"
         result = file_utils.download_file(client, "file_x", str(out))
@@ -89,7 +89,7 @@ class TestDownloadFile:
         assert result["success"] is True
         assert result["size"] == len(b"payload-data")
         assert out.read_bytes() == b"payload-data"
-        client.beta.files.download.assert_called_once_with(file_id="file_x")
+        client.files.download.assert_called_once_with(file_id="file_x")
 
     def test_respects_overwrite_false(self, tmp_path: Path):
         existing = tmp_path / "existing.bin"
@@ -101,7 +101,7 @@ class TestDownloadFile:
         assert result["success"] is False
         assert "already exists" in result["error"]
         # The client must not be called when refusing to overwrite.
-        client.beta.files.download.assert_not_called()
+        client.files.download.assert_not_called()
         # File should be untouched.
         assert existing.read_bytes() == b"old"
 
@@ -109,7 +109,7 @@ class TestDownloadFile:
         existing = tmp_path / "existing.bin"
         existing.write_bytes(b"old")
         client = MagicMock()
-        client.beta.files.download.return_value = io.BytesIO(b"new")
+        client.files.download.return_value = io.BytesIO(b"new")
 
         result = file_utils.download_file(client, "fid", str(existing), overwrite=True)
 
@@ -119,7 +119,7 @@ class TestDownloadFile:
 
     def test_returns_error_on_exception(self, tmp_path: Path):
         client = MagicMock()
-        client.beta.files.download.side_effect = RuntimeError("boom")
+        client.files.download.side_effect = RuntimeError("boom")
         result = file_utils.download_file(client, "fid", str(tmp_path / "out.bin"))
         assert result["success"] is False
         assert "boom" in result["error"]
@@ -128,7 +128,7 @@ class TestDownloadFile:
 class TestGetFileInfo:
     def test_maps_fields(self):
         client = MagicMock()
-        client.beta.files.retrieve_metadata.return_value = SimpleNamespace(
+        client.files.retrieve_metadata.return_value = SimpleNamespace(
             id="file_x",
             filename="report.xlsx",
             size_bytes=12345,
@@ -152,18 +152,18 @@ class TestGetFileInfo:
 
     def test_returns_none_on_error(self, capsys):
         client = MagicMock()
-        client.beta.files.retrieve_metadata.side_effect = RuntimeError("nope")
+        client.files.retrieve_metadata.side_effect = RuntimeError("nope")
         assert file_utils.get_file_info(client, "f") is None
 
 
 class TestDownloadAllFiles:
     def test_iterates_extracted_ids_with_metadata(self, tmp_path: Path):
         client = MagicMock()
-        client.beta.files.retrieve_metadata.side_effect = [
+        client.files.retrieve_metadata.side_effect = [
             SimpleNamespace(filename="a.xlsx"),
             SimpleNamespace(filename="b.pptx"),
         ]
-        client.beta.files.download.side_effect = [
+        client.files.download.side_effect = [
             io.BytesIO(b"alpha"),
             io.BytesIO(b"beta"),
         ]
@@ -181,8 +181,8 @@ class TestDownloadAllFiles:
 
     def test_falls_back_to_generic_filename_on_metadata_error(self, tmp_path: Path):
         client = MagicMock()
-        client.beta.files.retrieve_metadata.side_effect = RuntimeError("metadata gone")
-        client.beta.files.download.return_value = io.BytesIO(b"x")
+        client.files.retrieve_metadata.side_effect = RuntimeError("metadata gone")
+        client.files.download.return_value = io.BytesIO(b"x")
 
         response = SimpleNamespace(content=[make_bash_tool_block(["only_id"])])
         results = file_utils.download_all_files(client, response, output_dir=str(tmp_path))

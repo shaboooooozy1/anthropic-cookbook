@@ -73,21 +73,23 @@ ci: CI/CD changes
 
 ## Key Rules
 
-1. **API keys:** Never commit `.env` files. Always read with `os.environ.get("ANTHROPIC_API_KEY")`.
+1. **API Keys:** Never commit `.env` files. Use `dotenv.load_dotenv()` then access keys via `os.environ` or `os.getenv()`
 
 2. **Dependencies:** Use `uv add <package>` or `uv add --dev <package>`. Don't edit `pyproject.toml` directly.
 
-3. **Models — use current Claude models, not dated IDs:**
-   - Sonnet: `claude-sonnet-4-6`
-   - Haiku: `claude-haiku-4-5`
-   - Opus: `claude-opus-4-6`
-   - **Never** use dated IDs like `claude-sonnet-4-6-20250514`. Always use the non-dated alias.
-   - **Bedrock** uses different IDs:
-     - Opus 4.6: `anthropic.claude-opus-4-6-v1`
-     - Sonnet 4.5: `anthropic.claude-sonnet-4-5-20250929-v1:0`
-     - Haiku 4.5: `anthropic.claude-haiku-4-5-20251001-v1:0`
-     - Prepend `global.` for global endpoints (recommended): `global.anthropic.claude-opus-4-6-v1`
-     - Bedrock models prior to Opus 4.6 require dated IDs.
+3. **Models:** Use current Claude models. Check platform.claude.com/docs for latest versions.
+   - Opus: `claude-opus-5-5`
+   - Sonnet: `claude-sonnet-5-5`
+   - Fable: `claude-fable-5-1`
+   - Haiku: `claude-haiku-5-5`
+   - **Never use dated model IDs** (e.g., `claude-sonnet-4-5-20250929`). Always use the non-dated alias.
+   - **Bedrock model IDs** follow a different format. Use the base Bedrock model ID from the docs:
+     - Opus 5.5: `anthropic.claude-opus-5-5`
+     - Sonnet 5.5: `anthropic.claude-sonnet-5-5`
+     - Fable 5.1: `anthropic.claude-fable-5-1`
+     - Haiku 5.5: `anthropic.claude-haiku-5-5`
+     - Prepend `global.` for global endpoints (recommended): `global.anthropic.claude-opus-5-5`
+     - Note: these are the IDs for Bedrock's Messages-API endpoint. Integrations that only go through InvokeModel (for example `boto3` `invoke_model`, or fine-tuning jobs) use the dated form instead, e.g. `anthropic.claude-haiku-4-5-20251001-v1:0`.
 
 4. **Notebooks:**
    - **Keep outputs** — they demonstrate expected results and are intentionally checked in.
@@ -118,62 +120,16 @@ Defined in `.claude/commands/` and used both in Claude Code locally and in CI:
 ## Project Structure
 
 ```
-capabilities/         # Core Claude capabilities: classification, RAG, summarization,
-                      #   contextual-embeddings, text-to-sql (each has guide.ipynb +
-                      #   data/ + evaluation/)
-claude_agent_sdk/     # Tutorial series for the Claude Agent SDK (numbered
-                      #   00–03 notebooks). Ships its own pyproject.toml plus
-                      #   per-agent packages: research_agent, chief_of_staff_agent,
-                      #   observability_agent, site_reliability_agent, and shared utils/
-coding/               # Coding-focused notebooks (e.g., frontend aesthetics)
-extended_thinking/    # Extended reasoning patterns
-finetuning/           # Fine-tuning examples (e.g., on Bedrock)
-misc/                 # Batch processing, prompt caching, evals, JSON mode,
-                      #   citations, PDF, session memory compaction, etc.
-multimodal/           # Vision, charts/PPT, transcription, sub-agents, crop tool
-observability/        # Usage / Cost API examples
-patterns/agents/      # Agent design patterns (basic workflows, evaluator-optimizer,
-                      #   orchestrator-workers)
-skills/               # Skills feature for document generation (xlsx/pptx/pdf/docx).
-                      #   Includes notebooks/, custom_skills/, sample_data/, helper
-                      #   modules (file_utils.py, skill_utils.py), its own CLAUDE.md,
-                      #   and tests/ (in pytest testpaths)
-third_party/          # Integrations: Pinecone, VoyageAI, Wikipedia, MongoDB,
-                      #   LlamaIndex, Deepgram, ElevenLabs, WolframAlpha
-tool_use/             # Tool use patterns: parallel, choice, structured JSON, memory,
-                      #   tool search w/ embeddings, programmatic tool calling, vision.
-                      #   Plus supporting code: memory_tool.py, utils/, memory_demo/, tests/
-tool_evaluation/      # Tool evaluation framework example (notebook + evaluation.xml)
-tests/                # pytest suite: registry/authors (test_registry.py),
-                      #   shared notebook-validator helpers (test_utils.py),
-                      #   the pre-commit linter scripts/validate_notebooks.py
-                      #   (test_validate_notebooks.py + test_validate_all_notebooks.py)
-                      #   and the authors-sort hook (test_validate_authors_sorted.py),
-                      #   plus tests/notebook_tests/ (structure + execution tests).
-                      #   pytest testpaths also include skills/tests/
-                      #   (test_file_utils.py, test_skill_utils.py).
-anthropic_cookbook/   # Empty placeholder package so hatchling has something to build
-scripts/              # Validation scripts (validate_notebooks.py,
-                      #   validate_all_notebooks.py, test_notebooks.py,
-                      #   validate_authors_sorted.py, and detect-secrets/ —
-                      #   a custom detect-secrets plugin + baseline)
-.claude/              # Slash commands, subagents, skills for Claude Code + CI
-.github/workflows/    # CI: lint-format, notebook-tests, notebook-quality,
-                      #   notebook-diff-comment, links, verify-authors, claude-pr-review,
-                      #   claude-model-check, claude-link-review
-registry.yaml         # Catalog of notebooks (title, path, authors, categories, date)
-authors.yaml          # Contributor metadata (kept sorted; enforced by hook)
-tox.ini               # Isolated test envs: `structure`, `structure-single`,
-                      #   `execution`, `execution-single`, `registry`, `quick`,
-                      #   `third-party`, `lint`, `format` (used by
-                      #   `make test-notebooks-tox` and CI)
-pyproject.toml        # Project deps + ruff/pytest config (Python 3.11 / 3.12)
-lychee.toml           # Link-checker config (timeouts, retries, ignore patterns)
-                      #   used by `links.yml` / `claude-link-review.yml`
-CONTRIBUTING.md       # Contributor walkthrough (setup, style, PR checklist)
-AGENTS.md             # Cross-tool agent notes (uv workflow, Cursor Cloud setup,
-                      #   which env vars the harness actually reads); defers to
-                      #   CLAUDE.md / CONTRIBUTING.md / Makefile / pyproject.toml
+capabilities/      # Core Claude capabilities (RAG, classification, etc.)
+evals/             # Model evaluation patterns and benchmarks
+skills/            # Advanced skill-based notebooks
+tool_use/          # Tool use and integration patterns
+multimodal/        # Vision and image processing
+misc/              # Batch processing, caching, utilities
+third_party/       # Pinecone, Voyage, LlamaIndex integrations
+extended_thinking/ # Extended reasoning patterns
+scripts/           # Validation scripts
+.claude/           # Claude Code commands and skills
 ```
 
 ## Adding a New Cookbook
