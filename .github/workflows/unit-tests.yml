@@ -8,12 +8,18 @@ on:
       - 'uv.lock'
       - 'Makefile'
       - '.github/workflows/unit-tests.yml'
+      # The suite asserts invariants on these data files (duplicate registry
+      # paths, author ordering), so data-only PRs must run it too.
+      - 'registry.yaml'
+      - 'authors.yaml'
   push:
     branches: [main]
     paths:
       - '**/*.py'
       - 'pyproject.toml'
       - 'uv.lock'
+      - 'registry.yaml'
+      - 'authors.yaml'
 
 permissions:
   contents: read
