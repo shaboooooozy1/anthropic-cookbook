@@ -1,10 +1,10 @@
 import re
 
 from detect_secrets.core.log import log
-from detect_secrets.plugins.base import BasePlugin
+from detect_secrets.plugins.base import RegexBasedDetector
 
 
-class AnthropicSecretsDetector(BasePlugin):
+class AnthropicSecretsDetector(RegexBasedDetector):
     """Scans for common API keys and credentials in notebooks."""
 
     log.info("Running Anthropic Secrets Detector")

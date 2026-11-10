@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Claude Prompt vs Project vs Skills</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #1a2433;
+      --ink-soft: #3d4a5c;
+      --muted: #6b7a8f;
+      --line: rgba(26, 36, 51, 0.12);
+      --paper: #f3f6f9;
+      --panel: rgba(255, 255, 255, 0.72);
+      --prompt: #2f6f8f;
+      --project: #3f6b4f;
+      --skill: #c45c16;
+      --skill-soft: #fff1e4;
+      --shadow: 0 18px 50px rgba(26, 36, 51, 0.08);
+      --radius: 18px;
+      --font-display: "Fraunces", Georgia, serif;
+      --font-body: "IBM Plex Sans", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: var(--font-body);
+      line-height: 1.55;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(47, 111, 143, 0.16), transparent 55%),
+        radial-gradient(900px 500px at 90% 0%, rgba(196, 92, 22, 0.14), transparent 50%),
+        linear-gradient(180deg, #eef3f7 0%, var(--paper) 40%, #e9eef4 100%);
+      min-height: 100vh;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.35;
+      background-image:
+        linear-gradient(rgba(26, 36, 51, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(26, 36, 51, 0.03) 1px, transparent 1px);
+      background-size: 28px 28px;
+      mask-image: radial-gradient(circle at center, black 30%, transparent 85%);
+    }
+
+    .wrap {
+      width: min(1120px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 2.5rem 0 4rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero {
+      display: grid;
+      gap: 1rem;
+      margin-bottom: 2.25rem;
+      animation: rise 0.7s ease both;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 1.5rem;
+      height: 2px;
+      background: var(--skill);
+    }
+
+    h1 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: clamp(2.2rem, 5vw, 3.6rem);
+      line-height: 1.08;
+      letter-spacing: -0.02em;
+      max-width: 14ch;
+    }
+
+    .lede {
+      margin: 0;
+      max-width: 52ch;
+      color: var(--ink-soft);
+      font-size: 1.05rem;
+    }
+
+    .chooser {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.85rem;
+      margin: 1.5rem 0 2.5rem;
+      animation: rise 0.8s ease 0.08s both;
+    }
+
+    .chooser button {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      backdrop-filter: blur(10px);
+      border-radius: 999px;
+      padding: 0.85rem 1rem;
+      font: inherit;
+      font-weight: 500;
+      color: var(--ink);
+      cursor: pointer;
+      transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+    }
+
+    .chooser button:hover,
+    .chooser button[aria-pressed="true"] {
+      transform: translateY(-2px);
+      border-color: currentColor;
+    }
+
+    .chooser button[data-mode="prompt"] { color: var(--prompt); }
+    .chooser button[data-mode="project"] { color: var(--project); }
+    .chooser button[data-mode="skill"] {
+      color: var(--skill);
+      background: var(--skill-soft);
+      border-color: rgba(196, 92, 22, 0.28);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .card {
+      position: relative;
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 1.35rem 1.25rem 1.4rem;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      opacity: 0;
+      transform: translateY(18px);
+      animation: rise 0.65s ease forwards;
+      transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .card:nth-child(1) { animation-delay: 0.12s; }
+    .card:nth-child(2) { animation-delay: 0.22s; }
+    .card:nth-child(3) { animation-delay: 0.32s; }
+
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 22px 55px rgba(26, 36, 51, 0.12);
+    }
+
+    .card.featured {
+      border-color: rgba(196, 92, 22, 0.35);
+      background:
+        linear-gradient(180deg, rgba(255, 241, 228, 0.95), rgba(255, 255, 255, 0.78));
+    }
+
+    .card.featured::after {
+      content: "Reusable";
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--skill);
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid rgba(196, 92, 22, 0.2);
+      border-radius: 999px;
+      padding: 0.25rem 0.55rem;
+    }
+
+    .card.dim {
+      opacity: 0.45;
+      filter: saturate(0.7);
+    }
+
+    .card.active-pick {
+      opacity: 1;
+      filter: none;
+      border-color: currentColor;
+    }
+
+    .mode-num {
+      display: inline-grid;
+      place-items: center;
+      width: 1.7rem;
+      height: 1.7rem;
+      border-radius: 50%;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 0.85rem;
+      color: white;
+    }
+
+    .card[data-mode="prompt"] .mode-num { background: var(--prompt); }
+    .card[data-mode="project"] .mode-num { background: var(--project); }
+    .card[data-mode="skill"] .mode-num { background: var(--skill); }
+
+    .card h2 {
+      margin: 0 0 0.35rem;
+      font-family: var(--font-display);
+      font-size: 1.7rem;
+      letter-spacing: -0.02em;
+    }
+
+    .target {
+      margin: 0 0 1rem;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .meta {
+      display: grid;
+      gap: 0.85rem;
+      margin: 0;
+    }
+
+    .meta div {
+      padding-top: 0.85rem;
+      border-top: 1px solid var(--line);
+    }
+
+    .meta dt {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+
+    .meta dd {
+      margin: 0;
+      color: var(--ink-soft);
+      font-size: 0.95rem;
+    }
+
+    .panel {
+      display: grid;
+      grid-template-columns: 0.9fr 1.4fr;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      animation: rise 0.7s ease 0.4s both;
+    }
+
+    .rule, .matrix, .summary, .footer-note {
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .rule {
+      padding: 1.4rem;
+      background:
+        linear-gradient(160deg, rgba(26, 36, 51, 0.94), rgba(47, 111, 143, 0.9));
+      color: #f5f8fb;
+    }
+
+    .rule h3 {
+      margin: 0 0 0.75rem;
+      font-family: var(--font-display);
+      font-size: 1.45rem;
+    }
+
+    .rule p {
+      margin: 0;
+      color: rgba(245, 248, 251, 0.88);
+    }
+
+    .rule ol {
+      margin: 1rem 0 0;
+      padding-left: 1.15rem;
+      display: grid;
+      gap: 0.65rem;
+      color: rgba(245, 248, 251, 0.92);
+    }
+
+    .matrix {
+      padding: 1.2rem;
+      overflow: auto;
+    }
+
+    .matrix h3,
+    .summary h3 {
+      margin: 0 0 0.9rem;
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.7rem 0.55rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    th {
+      font-size: 0.72rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    td:nth-child(1) {
+      font-weight: 600;
+      color: var(--ink);
+      white-space: nowrap;
+    }
+
+    .skill-col { color: var(--skill); font-weight: 600; }
+
+    .summary {
+      padding: 1.2rem;
+      margin-bottom: 1.25rem;
+      animation: rise 0.7s ease 0.5s both;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.85rem;
+    }
+
+    .summary-item {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 1rem;
+      background: rgba(255, 255, 255, 0.55);
+    }
+
+    .summary-item h4 {
+      margin: 0 0 0.55rem;
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+    }
+
+    .summary-item p {
+      margin: 0;
+      color: var(--ink-soft);
+      font-size: 0.92rem;
+    }
+
+    .takeaway {
+      margin-top: 1rem;
+      padding: 1rem 1.1rem;
+      border-radius: 14px;
+      background: rgba(196, 92, 22, 0.08);
+      border: 1px solid rgba(196, 92, 22, 0.18);
+      color: var(--ink-soft);
+    }
+
+    .footer-note {
+      padding: 1rem 1.15rem;
+      color: var(--muted);
+      font-size: 0.88rem;
+      animation: rise 0.7s ease 0.58s both;
+    }
+
+    .footer-note strong { color: var(--ink-soft); }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(18px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 860px) {
+      .chooser,
+      .grid,
+      .panel,
+      .summary-grid {
+        grid-template-columns: 1fr;
+      }
+
+      h1 { max-width: none; }
+
+      .card.featured::after {
+        top: 0.9rem;
+        right: 0.9rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="hero">
+      <div class="eyebrow">Decision guide</div>
+      <h1>Claude Prompt vs Project vs Skills</h1>
+      <p class="lede">
+        Choose the right layer of persistence: speak once and move on, keep context for a body of work,
+        or teach Claude a reusable way of working that follows you everywhere.
+      </p>
+    </header>
+
+    <div class="chooser" role="group" aria-label="Highlight a usage mode">
+      <button type="button" data-mode="prompt" aria-pressed="false">1 · Prompt</button>
+      <button type="button" data-mode="project" aria-pressed="false">2 · Project</button>
+      <button type="button" data-mode="skill" aria-pressed="false">3 · Skills</button>
+    </div>
+
+    <section class="grid" aria-label="Usage modes">
+      <article class="card" data-mode="prompt">
+        <span class="mode-num">1</span>
+        <h2>Prompt</h2>
+        <p class="target">Short-term conversations and quick tasks.</p>
+        <dl class="meta">
+          <div>
+            <dt>When to use</dt>
+            <dd>Use a prompt for everything else — one-off asks, exploration, and work that does not need to persist.</dd>
+          </div>
+          <div>
+            <dt>Best practice</dt>
+            <dd>Give relevant information directly in the message. Keep it concrete and complete.</dd>
+          </div>
+          <div>
+            <dt>Tradeoff</dt>
+            <dd>Fastest path, but context is lost when the chat ends and must be repeated later.</dd>
+          </div>
+        </dl>
+      </article>
+
+      <article class="card" data-mode="project">
+        <span class="mode-num">2</span>
+        <h2>Project</h2>
+        <p class="target">One task or one group of related tasks over days.</p>
+        <dl class="meta">
+          <div>
+            <dt>When to use</dt>
+            <dd>Use when you need shared context across multiple chats inside the same body of work.</dd>
+          </div>
+          <div>
+            <dt>Best practice</dt>
+            <dd>Write Project Instructions and upload the documents Claude should treat as standing knowledge.</dd>
+          </div>
+          <div>
+            <dt>Tradeoff</dt>
+            <dd>Excellent mid-scale workspace, but knowledge stays scoped to that project.</dd>
+          </div>
+        </dl>
+      </article>
+
+      <article class="card featured" data-mode="skill">
+        <span class="mode-num">3</span>
+        <h2>Skills</h2>
+        <p class="target">Long-term capabilities reused across chats and projects.</p>
+        <dl class="meta">
+          <div>
+            <dt>When to use</dt>
+            <dd>Use Skills for a repeated, reusable capability — a standard way of working Claude can apply anywhere.</dd>
+          </div>
+          <div>
+            <dt>Best practice</dt>
+            <dd>Define specialized, repeatable instructions and attach reusable files, templates, or scripts.</dd>
+          </div>
+          <div>
+            <dt>Tradeoff</dt>
+            <dd>Highest leverage layer: more setup up front, then automatic reuse instead of copy-paste.</dd>
+          </div>
+        </dl>
+      </article>
+    </section>
+
+    <section class="panel">
+      <aside class="rule">
+        <h3>The rule of thumb</h3>
+        <p>Match persistence to the job, not the other way around.</p>
+        <ol>
+          <li><strong>Prompt</strong> if you want to speak with Claude now and move on.</li>
+          <li><strong>Project</strong> if you want to keep context across a few chats.</li>
+          <li><strong>Skills</strong> if you want to teach Claude a reusable trick.</li>
+        </ol>
+      </aside>
+
+      <div class="matrix">
+        <h3>Workflow comparison</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Need</th>
+              <th>Projects</th>
+              <th>Skills</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Start with context</td>
+              <td>Put context into the project</td>
+              <td>Put reusable procedure into a skill</td>
+            </tr>
+            <tr>
+              <td>Work across chats</td>
+              <td>Multiple chats inside one project</td>
+              <td>Same capability across many chats</td>
+            </tr>
+            <tr>
+              <td>Share the method</td>
+              <td>Repeat manually or copy instructions</td>
+              <td>Automate via Skills</td>
+            </tr>
+            <tr>
+              <td>Reusable knowledge</td>
+              <td>No — per-project</td>
+              <td class="skill-col">Yes — across many chats</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="summary">
+      <h3>At a glance</h3>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <h4>Scale</h4>
+          <p><strong>Prompt:</strong> simple task<br /><strong>Project:</strong> mid-scale<br /><strong>Skill:</strong> broad / long-term</p>
+        </div>
+        <div class="summary-item">
+          <h4>Context</h4>
+          <p><strong>Prompt:</strong> provided in chat<br /><strong>Project:</strong> saved in project context<br /><strong>Skill:</strong> saved as a skill</p>
+        </div>
+        <div class="summary-item">
+          <h4>Repeatability</h4>
+          <p><strong>Prompt:</strong> manual each time<br /><strong>Project:</strong> for that project's chats<br /><strong>Skill:</strong> repeatable across many chats</p>
+        </div>
+      </div>
+      <p class="takeaway">
+        Projects say “here is what you need to know.” Skills say “here is how to do this.”
+        Use prompts for the moment, projects for the workspace, and skills for the playbook.
+      </p>
+    </section>
+
+    <footer class="footer-note">
+      <strong>Note:</strong> Feature availability can vary by Anthropic plan.
+      Interactive recreation inspired by Mike Cardwell’s Prompt / Project / Skills comparison guide
+      and aligned with Anthropic’s Skills explained framing.
+    </footer>
+  </main>
+
+  <script>
+    const buttons = [...document.querySelectorAll(".chooser button")];
+    const cards = [...document.querySelectorAll(".card")];
+
+    function setMode(mode) {
+      const clearing = mode === null;
+      buttons.forEach((button) => {
+        const pressed = !clearing && button.dataset.mode === mode;
+        button.setAttribute("aria-pressed", String(pressed));
+      });
+      cards.forEach((card) => {
+        card.classList.toggle("dim", !clearing && card.dataset.mode !== mode);
+        card.classList.toggle("active-pick", !clearing && card.dataset.mode === mode);
+      });
+    }
+
+    buttons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const mode = button.dataset.mode;
+        const already = button.getAttribute("aria-pressed") === "true";
+        setMode(already ? null : mode);
+      });
+    });
+  </script>
+</body>
+</html>

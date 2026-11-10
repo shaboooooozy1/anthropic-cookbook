@@ -43,6 +43,7 @@ except ImportError:
     print("   Run: pip install python-dotenv")
 
 # Webhook server configuration (must be after dotenv loads)
+WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST", "127.0.0.1")
 WEBHOOK_PORT = int(os.environ.get("WEBHOOK_PORT", "8585"))
 PAGERDUTY_API_KEY = os.environ.get("PAGERDUTY_API_KEY", "")
 
@@ -636,9 +637,9 @@ async def start_webhook_server():
 
     runner = web.AppRunner(webhook_app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", WEBHOOK_PORT)  # noqa: S104 - webhook listener must be reachable
+    site = web.TCPSite(runner, WEBHOOK_HOST, WEBHOOK_PORT)
     await site.start()
-    print(f"🌐 Webhook server listening on http://0.0.0.0:{WEBHOOK_PORT}")
+    print(f"🌐 Webhook server listening on http://{WEBHOOK_HOST}:{WEBHOOK_PORT}")
     print(f"   PagerDuty webhook URL: http://<your-host>:{WEBHOOK_PORT}/webhooks/pagerduty")
 
     # Keep the server running
