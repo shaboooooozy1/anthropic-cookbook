@@ -452,7 +452,9 @@ async def process_investigation(
             "mcp__sre__get_container_logs",
         ],
         permission_mode="acceptEdits",
-        model="claude-opus-4-6",
+        model="claude-opus-5-5",
+        # Keep the bot isolated from user/project filesystem settings.
+        setting_sources=[],
     )
 
     # Stream responses to Slack as they arrive
