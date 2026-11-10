@@ -19,6 +19,7 @@ import base64
 import html
 import json
 import os
+import re
 import shlex
 import sys
 import time
@@ -132,19 +133,12 @@ Available services: api-server, payment-svc, auth-svc, postgres""",
                 },
                 "level": {
                     "type": "string",
-                    "description": (
-                        "Filter by log level: all,"
-                        " error, warn, info"
-                        " (default: all)"
-                    ),
+                    "description": ("Filter by log level: all, error, warn, info (default: all)"),
                     "enum": ["all", "error", "warn", "info"],
                 },
                 "lines": {
                     "type": "integer",
-                    "description": (
-                        "Number of log lines to return"
-                        " (default: 20, max: 100)"
-                    ),
+                    "description": ("Number of log lines to return (default: 20, max: 100)"),
                 },
             },
             "required": ["service"],
@@ -210,9 +204,7 @@ Always run the investigate phase first to confirm the issue before remediation."
                     "type": "string",
                     "enum": ["investigate", "remediate"],
                     "description": (
-                        "Phase to execute:"
-                        " 'investigate' for diagnosis,"
-                        " 'remediate' for fixes"
+                        "Phase to execute: 'investigate' for diagnosis, 'remediate' for fixes"
                     ),
                 },
             },
@@ -315,17 +307,11 @@ Available containers: api-server, postgres, traffic-generator""",
             "properties": {
                 "container": {
                     "type": "string",
-                    "description": (
-                        "Container name (api-server,"
-                        " postgres, traffic-generator)"
-                    ),
+                    "description": ("Container name (api-server, postgres, traffic-generator)"),
                 },
                 "lines": {
                     "type": "integer",
-                    "description": (
-                        "Number of log lines to return"
-                        " (default: 50, max: 200)"
-                    ),
+                    "description": ("Number of log lines to return (default: 50, max: 200)"),
                 },
             },
             "required": ["container"],
@@ -345,10 +331,7 @@ The report is saved as a markdown file with a timestamp-based filename.""",
             "properties": {
                 "title": {
                     "type": "string",
-                    "description": (
-                        "Incident title "
-                        "(e.g., 'DB Connection Pool Exhaustion')"
-                    ),
+                    "description": ("Incident title (e.g., 'DB Connection Pool Exhaustion')"),
                 },
                 "summary": {
                     "type": "string",
@@ -403,16 +386,13 @@ if PAGERDUTY_API_KEY:
                             "type": "string",
                             "enum": ["high", "low"],
                             "description": (
-                                "Incident urgency:"
-                                " 'high' for immediate page," 
-                                " 'low' for non-urgent"
+                                "Incident urgency: 'high' for immediate page, 'low' for non-urgent"
                             ),
                         },
                         "service_id": {
                             "type": "string",
                             "description": (
-                                "PagerDuty service ID"
-                                " (optional, uses default if not specified)"
+                                "PagerDuty service ID (optional, uses default if not specified)"
                             ),
                         },
                     },
@@ -439,8 +419,7 @@ if PAGERDUTY_API_KEY:
                         "resolution_note": {
                             "type": "string",
                             "description": (
-                                "Note explaining the resolution"
-                                " (required for 'resolved' status)"
+                                "Note explaining the resolution (required for 'resolved' status)"
                             ),
                         },
                     },
@@ -475,8 +454,7 @@ if PAGERDUTY_API_KEY:
                             "type": "string",
                             "enum": ["triggered", "acknowledged", "resolved", "all"],
                             "description": (
-                                "Filter by status (default: 'all'"
-                                " for triggered + acknowledged)"
+                                "Filter by status (default: 'all' for triggered + acknowledged)"
                             ),
                         },
                         "service_id": {
@@ -518,8 +496,7 @@ if CONFLUENCE_BASE_URL and CONFLUENCE_API_TOKEN:
                         "title": {
                             "type": "string",
                             "description": (
-                                "Page title (e.g., 'Post-Mortem:"
-                                " 2025-01-15 API Server Outage')"
+                                "Page title (e.g., 'Post-Mortem: 2025-01-15 API Server Outage')"
                             ),
                         },
                         "incident_summary": {
@@ -564,8 +541,7 @@ if CONFLUENCE_BASE_URL and CONFLUENCE_API_TOKEN:
                         "pagerduty_incident_id": {
                             "type": "string",
                             "description": (
-                                "Associated PagerDuty incident"
-                                " ID (optional, for linking)"
+                                "Associated PagerDuty incident ID (optional, for linking)"
                             ),
                         },
                     },
@@ -586,10 +562,7 @@ if CONFLUENCE_BASE_URL and CONFLUENCE_API_TOKEN:
                         },
                         "title": {
                             "type": "string",
-                            "description": (
-                                "Search by page title"
-                                " (alternative to page_id)"
-                            ),
+                            "description": ("Search by page title (alternative to page_id)"),
                         },
                     },
                     "required": [],
@@ -624,6 +597,115 @@ if CONFLUENCE_BASE_URL and CONFLUENCE_API_TOKEN:
 
 # Project root directory (for config file operations)
 PROJECT_ROOT = Path(__file__).resolve().parent
+# The only compose file run_shell_command may be pointed at (generated by infra_setup.py)
+COMPOSE_FILE = "config/docker-compose.yml"
+
+# The only file compose loads as an env_file for the api-server container, and so the
+# only path by which DB_POOL_SIZE reaches it.
+ENV_FILE = "config/api-server.env"
+
+# Safe operating range for DB_POOL_SIZE, enforced in edit_config_file and before a
+# deploy. The notebook also registers hook scripts that check this, but a hook is a
+# second layer the caller may not have wired up, so the tools enforce it themselves.
+POOL_SIZE_MIN, POOL_SIZE_MAX = 5, 100
+
+# Everything a line that can carry an assignment is allowed to contain. Deliberately
+# far stricter than the parser it guards, because trying to match that parser is what
+# kept failing: compose strips a BOM and any Go unicode.IsSpace run before a key, so
+# "\u00a0DB_POOL_SIZE=1" and "\ufeffDB_POOL_SIZE=1" are assignments it honours that an
+# ASCII-anchored regex cannot see at all. Refusing such a line closes those — and any
+# codepoint not thought of yet — in one rule.
+_ENV_FILE_ALLOWED_LINE = re.compile(r"^[\t\r\x20-\x7e]*\Z")
+
+# Blank and comment lines are exempt from that rule: a comment cannot become an
+# assignment, and the generated file has prose in its comments. Comment-ness is decided
+# conservatively, which is the load-bearing part — compose strips leading Unicode
+# whitespace before testing for "#", so a line led by non-ASCII whitespace ("\u00a0# x")
+# is NOT a comment here. It fails the rule above instead, which is the safe side.
+_ENV_FILE_SKIPPABLE_LINE = re.compile(r"^[ \t]*(?:#.*)?\Z")
+
+# A carriage return is only understood as half of a "\r\n" line ending. A bare one is
+# refused rather than modelled, comments included, because its two readers disagree:
+# compose does not break a line on it but does strip it as leading whitespace, so
+# "\rDB_POOL_SIZE=1" is an assignment compose honours that the pattern below cannot see,
+# while Python's default text mode turns it into "\n". The second is why the file is
+# opened with newline="" wherever it is judged or rewritten.
+_BARE_CR = re.compile(r"\r(?!\n)")
+
+# compose only reads this file line by line while every value is unquoted. After a value
+# that opens with " or ' it resumes right behind the closing quote, on the same line or
+# several lines further down, so in
+#     DB_POOL_TIMEOUT="2" DB_POOL_SIZE=1
+# the second statement is an assignment compose honours and no line-anchored pattern can
+# find. Quoting is refused rather than parsed, as it already was on the DB_POOL_SIZE line
+# itself: with no quote outside a comment, a statement and a line are the same thing.
+_ENV_FILE_QUOTE = re.compile(r"[\"']")
+
+# compose honours "export KEY=v" (with any run of spaces or tabs) and godotenv's
+# "KEY: v" form as well as "KEY=v". A key with no separator at all is honoured too: it
+# takes its value from the environment compose itself runs in, which this guard cannot
+# see, so that form is matched as an assignment whose value is empty.
+_DB_POOL_SIZE_LINE = re.compile(r"^[ \t]*(?:export[ \t]+)?DB_POOL_SIZE[ \t]*(?:[:=](.*)|\r?\Z)")
+
+
+def _db_pool_sizes_in(text: str) -> list[str]:
+    """Return every raw DB_POOL_SIZE value assigned in text, in file order."""
+    return [
+        (m.group(1) or "").strip() for m in map(_DB_POOL_SIZE_LINE.match, text.split("\n")) if m
+    ]
+
+
+def _env_file_problem(text: str) -> str | None:
+    r"""Describe what is wrong with the api-server env file, or None if it is fine.
+
+    Fails closed: what is not understood is refused rather than parsed. Lines are split
+    on "\n" only and never with str.splitlines(), which also breaks on \x0b, \x0c,
+    \x1c-\x1e and U+2028 where compose does not — a value containing one of those read
+    as two clean lines and hid an unparseable value. A "\r" is accepted only as part of
+    a "\r\n" line ending, where it is stripped with the rest of the whitespace as
+    compose does; a bare one is refused (see _BARE_CR), so text must reach this function
+    without newline translation. Quotes are refused outside comments, because a quoted
+    value is where compose stops reading line by line (see _ENV_FILE_QUOTE).
+    More than one assignment is refused outright rather than leaning on compose's
+    last-one-wins precedence. A value that will not parse as a plain integer is a
+    problem in its own right: infra_setup.py reads it with int(), so the container
+    fails at startup. A bare "DB_POOL_SIZE" line counts as an assignment with an empty
+    value, so it is refused on the same ground.
+    """
+    if _BARE_CR.search(text):
+        return f"{ENV_FILE} has a carriage return that is not part of a line ending"
+    for line in text.split("\n"):
+        if _ENV_FILE_SKIPPABLE_LINE.match(line):
+            continue
+        if not _ENV_FILE_ALLOWED_LINE.match(line):
+            return f"{ENV_FILE} may only use printable ASCII outside its comments"
+        if _ENV_FILE_QUOTE.search(line):
+            return f"{ENV_FILE} may not use quotes outside its comments"
+    values = _db_pool_sizes_in(text)
+    if len(values) > 1:
+        return f"{ENV_FILE} assigns DB_POOL_SIZE {len(values)} times"
+    for raw in values:
+        try:
+            value = int(raw)
+        except ValueError:
+            return f"DB_POOL_SIZE={raw!r} is not a plain integer"
+        if not (POOL_SIZE_MIN <= value <= POOL_SIZE_MAX):
+            return (
+                f"DB_POOL_SIZE={value} is outside the safe range ({POOL_SIZE_MIN}-{POOL_SIZE_MAX})"
+            )
+    return None
+
+
+# PagerDuty incident ids and Confluence content ids are interpolated into authenticated
+# REST paths, so only accept plain identifiers (no '/', '?', '..').
+_SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _invalid_id_error(value: str) -> dict[str, Any]:
+    return {
+        "content": [{"type": "text", "text": f"Error: invalid identifier '{value}'"}],
+        "isError": True,
+    }
 
 
 async def query_metrics(promql: str) -> dict[str, Any]:
@@ -644,8 +726,7 @@ async def query_metrics(promql: str) -> dict[str, Any]:
                     {
                         "type": "text",
                         "text": (
-                            f"Query failed: {data.get('error', 'Unknown error')}"
-                            f"\nQuery: {promql}"
+                            f"Query failed: {data.get('error', 'Unknown error')}\nQuery: {promql}"
                         ),
                     }
                 ],
@@ -675,18 +756,12 @@ async def query_metrics(promql: str) -> dict[str, Any]:
             labels = r.get("metric", {})
             if "value" in r:
                 timestamp, value = r["value"]
-                label_str = ", ".join(
-                    f"{k}={v}" for k, v in labels.items() if k != "__name__"
-                )
+                label_str = ", ".join(f"{k}={v}" for k, v in labels.items() if k != "__name__")
                 formatted_lines.append(f"  {label_str or 'value'}: {value}")
             elif "values" in r:
-                label_str = ", ".join(
-                    f"{k}={v}" for k, v in labels.items() if k != "__name__"
-                )
+                label_str = ", ".join(f"{k}={v}" for k, v in labels.items() if k != "__name__")
                 latest_value = r["values"][-1][1] if r["values"] else "N/A"
-                formatted_lines.append(
-                    f"  {label_str or 'value'}: {latest_value} (latest)"
-                )
+                formatted_lines.append(f"  {label_str or 'value'}: {latest_value} (latest)")
 
         return {"content": [{"type": "text", "text": "\n".join(formatted_lines)}]}
 
@@ -757,9 +832,7 @@ async def list_metrics() -> dict[str, Any]:
 
     except httpx.ConnectError:
         return {
-            "content": [
-                {"type": "text", "text": "Cannot connect to Prometheus. Is it running?"}
-            ],
+            "content": [{"type": "text", "text": "Cannot connect to Prometheus. Is it running?"}],
             "isError": True,
         }
     except Exception as e:
@@ -779,13 +852,7 @@ async def get_service_health() -> dict[str, Any]:
         try:
             response = await client.get(
                 f"{PROMETHEUS_URL}/api/v1/query",
-                params={
-                    "query": (
-                        'sum(rate(http_requests_total'
-                        '{status="500"}[1m]))'
-                        ' by (service)'
-                    )
-                },
+                params={"query": ('sum(rate(http_requests_total{status="500"}[1m])) by (service)')},
                 timeout=10.0,
             )
             if response.status_code == 200:
@@ -795,18 +862,10 @@ async def get_service_health() -> dict[str, Any]:
                     for r in data["data"]["result"]:
                         service = r["metric"].get("service", "unknown")
                         rate = float(r["value"][1])
-                        status = (
-                            "[CRITICAL]"
-                            if rate > 5
-                            else "[WARNING]"
-                            if rate > 1
-                            else "[OK]"
-                        )
+                        status = "[CRITICAL]" if rate > 5 else "[WARNING]" if rate > 1 else "[OK]"
                         health_lines.append(f"  {status} {service}: {rate:.2f}/sec")
                         if rate > 5:
-                            issues.append(
-                                f"High error rate on {service}: {rate:.1f}/sec"
-                            )
+                            issues.append(f"High error rate on {service}: {rate:.1f}/sec")
                     health_lines.append("")
         except Exception as e:
             health_lines.append(f"ERROR RATES: unable to query ({e})")
@@ -858,19 +917,11 @@ async def get_service_health() -> dict[str, Any]:
                 data = response.json()
                 if data["status"] == "success" and data["data"]["result"]:
                     active = float(data["data"]["result"][0]["value"][1])
-                    status = (
-                        "[CRITICAL]"
-                        if active > 90
-                        else "[WARNING]"
-                        if active > 70
-                        else "[OK]"
-                    )
+                    status = "[CRITICAL]" if active > 90 else "[WARNING]" if active > 70 else "[OK]"
                     health_lines.append("DATABASE CONNECTIONS:")
                     health_lines.append(f"  {status}: {active:.0f}/100 active")
                     if active > 90:
-                        issues.append(
-                            f"DB connection pool near exhaustion: {active:.0f}/100"
-                        )
+                        issues.append(f"DB connection pool near exhaustion: {active:.0f}/100")
                     health_lines.append("")
         except Exception as e:
             health_lines.append(f"DATABASE CONNECTIONS: unable to query ({e})")
@@ -888,9 +939,7 @@ async def get_service_health() -> dict[str, Any]:
                 if data["status"] == "success" and data["data"]["result"]:
                     health_lines.append("SERVICE STATUS:")
                     for r in data["data"]["result"]:
-                        service = r["metric"].get(
-                            "service", r["metric"].get("job", "unknown")
-                        )
+                        service = r["metric"].get("service", r["metric"].get("job", "unknown"))
                         is_up = int(float(r["value"][1])) == 1
                         status = "[UP]" if is_up else "[DOWN]"
                         health_lines.append(f"  {status}: {service}")
@@ -1011,9 +1060,7 @@ async def get_alerts() -> dict[str, Any]:
     if firing:
         lines.append("🔴 FIRING:")
         for alert in firing:
-            lines.append(
-                f"  [{alert['severity'].upper()}] {alert['name']} ({alert['service']})"
-            )
+            lines.append(f"  [{alert['severity'].upper()}] {alert['name']} ({alert['service']})")
             lines.append(f"      {alert['description']}")
             lines.append(f"      Duration: {alert['duration']}")
             lines.append("")
@@ -1021,9 +1068,7 @@ async def get_alerts() -> dict[str, Any]:
     if pending:
         lines.append("🟡 PENDING:")
         for alert in pending:
-            lines.append(
-                f"  [{alert['severity'].upper()}] {alert['name']} ({alert['service']})"
-            )
+            lines.append(f"  [{alert['severity'].upper()}] {alert['name']} ({alert['service']})")
             lines.append(f"      {alert['description']}")
             lines.append(f"      {alert['duration']}")
             lines.append("")
@@ -1031,9 +1076,7 @@ async def get_alerts() -> dict[str, Any]:
     if resolved and not firing:
         lines.append("✅ RECENTLY RESOLVED:")
         for alert in resolved:
-            lines.append(
-                f"  {alert['name']} ({alert['service']}) - {alert['duration']}"
-            )
+            lines.append(f"  {alert['name']} ({alert['service']}) - {alert['duration']}")
             lines.append("")
 
     if not firing and not pending:
@@ -1123,9 +1166,7 @@ async def get_recent_deployments(service: str | None = None) -> dict[str, Any]:
         else:
             age_str = f"{int(age_seconds / 86400)}d ago"
 
-        time_str = time.strftime(
-            "%Y-%m-%d %H:%M:%S", time.localtime(deploy["timestamp"])
-        )
+        time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(deploy["timestamp"]))
 
         lines.append(f"📦 {deploy['service']} - {age_str}")
         lines.append(f"   Commit: {deploy['commit']} ({deploy['pr']})")
@@ -1187,22 +1228,14 @@ RUNBOOKS = {
                 {
                     "priority": 1,
                     "action": "Restart affected service pods",
-                    "command": (
-                        "kubectl rollout restart"
-                        " deployment/api-server"
-                        " -n production"
-                    ),
+                    "command": ("kubectl rollout restart deployment/api-server -n production"),
                     "effect": "Releases held connections, temporary fix",
                     "risk": "Brief service interruption during restart",
                 },
                 {
                     "priority": 2,
                     "action": "Scale down affected service to release connections",
-                    "command": (
-                        "kubectl scale"
-                        " deployment/api-server"
-                        " --replicas=1 -n production"
-                    ),
+                    "command": ("kubectl scale deployment/api-server --replicas=1 -n production"),
                     "effect": "Reduces connection pressure immediately",
                     "risk": "Reduced capacity during incident",
                 },
@@ -1247,10 +1280,7 @@ RUNBOOKS = {
                 {
                     "step": 2,
                     "action": "Identify where latency originates",
-                    "query": (
-                        'topk(5, http_request_duration'
-                        '_milliseconds{quantile="0.99"})'
-                    ),
+                    "query": ('topk(5, http_request_duration_milliseconds{quantile="0.99"})'),
                     "note": "Service with highest latency is likely the source",
                 },
                 {
@@ -1266,10 +1296,7 @@ RUNBOOKS = {
                         "container_cpu_usage_ratio",
                         "container_memory_usage_ratio",
                     ],
-                    "threshold": (
-                        "CPU > 80% or Memory > 90%"
-                        " indicates resource pressure"
-                    ),
+                    "threshold": ("CPU > 80% or Memory > 90% indicates resource pressure"),
                 },
                 {
                     "step": 5,
@@ -1296,21 +1323,13 @@ RUNBOOKS = {
                 {
                     "priority": 2,
                     "action": "If CPU-bound: Scale horizontally",
-                    "command": (
-                        "kubectl scale"
-                        " deployment/api-server"
-                        " --replicas=5 -n production"
-                    ),
+                    "command": ("kubectl scale deployment/api-server --replicas=5 -n production"),
                     "effect": "Distributes load across more pods",
                 },
                 {
                     "priority": 3,
                     "action": "If memory-bound: Restart to clear potential leaks",
-                    "command": (
-                        "kubectl rollout restart"
-                        " deployment/api-server"
-                        " -n production"
-                    ),
+                    "command": ("kubectl rollout restart deployment/api-server -n production"),
                     "effect": "Clears memory, resets connections",
                 },
             ],
@@ -1331,11 +1350,7 @@ RUNBOOKS = {
             "escalation": {
                 "team": "Platform team",
                 "channel": "#platform-oncall",
-                "when": (
-                    "If latency doesn't improve"
-                    " after scaling, or if root"
-                    " cause unclear"
-                ),
+                "when": ("If latency doesn't improve after scaling, or if root cause unclear"),
             },
         },
     },
@@ -1352,22 +1367,18 @@ RUNBOOKS = {
                 {
                     "step": 1,
                     "action": "Identify which service has errors",
-                    "query": (
-                        'sum(rate(http_requests_total'
-                        '{status="500"}[1m]))'
-                        ' by (service)'
-                    ),
+                    "query": ('sum(rate(http_requests_total{status="500"}[1m])) by (service)'),
                     "threshold": "> 1% warning, > 5% critical",
                 },
                 {
                     "step": 2,
                     "action": "Calculate error ratio percentage",
                     "query": (
-                        'sum(rate(http_requests_total'
+                        "sum(rate(http_requests_total"
                         '{status="500"}[1m]))'
-                        ' by (service) / '
-                        'sum(rate(http_requests_total'
-                        '[1m])) by (service)'
+                        " by (service) / "
+                        "sum(rate(http_requests_total"
+                        "[1m])) by (service)"
                     ),
                     "note": "Shows error percentage per service",
                 },
@@ -1414,11 +1425,7 @@ RUNBOOKS = {
                 {
                     "condition": "If caused by recent deployment",
                     "action": "Rollback the deployment",
-                    "command": (
-                        "kubectl rollout undo"
-                        " deployment/api-server"
-                        " -n production"
-                    ),
+                    "command": ("kubectl rollout undo deployment/api-server -n production"),
                 },
                 {
                     "condition": "If caused by external dependency failure",
@@ -1429,11 +1436,7 @@ RUNBOOKS = {
                 {
                     "priority": 1,
                     "action": "If recent deployment suspected, rollback immediately",
-                    "command": (
-                        "kubectl rollout undo"
-                        " deployment/<service>"
-                        " -n production"
-                    ),
+                    "command": ("kubectl rollout undo deployment/<service> -n production"),
                     "effect": "Reverts to last known good state",
                 },
             ],
@@ -1444,11 +1447,7 @@ RUNBOOKS = {
                     "payment-svc": "#payments-oncall",
                     "auth-svc": "#identity-oncall",
                 },
-                "when": (
-                    "If root cause cannot be"
-                    " identified or errors persist"
-                    " after remediation"
-                ),
+                "when": ("If root cause cannot be identified or errors persist after remediation"),
             },
         },
     },
@@ -1498,9 +1497,7 @@ async def execute_runbook(runbook: str, phase: str) -> dict[str, Any]:
             if "tool" in step:
                 lines.append(f"  → Use tool: {step['tool']}")
                 if "params" in step:
-                    params_str = ", ".join(
-                        f"{k}={v}" for k, v in step["params"].items()
-                    )
+                    params_str = ", ".join(f"{k}={v}" for k, v in step["params"].items())
                     lines.append(f"     with params: {params_str}")
             if "threshold" in step:
                 lines.append(f"  → Threshold: {step['threshold']}")
@@ -1509,8 +1506,7 @@ async def execute_runbook(runbook: str, phase: str) -> dict[str, Any]:
             lines.append("")
 
         lines.append(
-            "After completing investigation, run this"
-            " runbook again with phase='remediate'"
+            "After completing investigation, run this runbook again with phase='remediate'"
         )
 
     elif phase == "remediate":
@@ -1592,11 +1588,7 @@ async def pagerduty_create_incident(
             "content": [
                 {
                     "type": "text",
-                    "text": (
-                        "No service ID provided and"
-                        " PAGERDUTY_SERVICE_ID not"
-                        " set in .env"
-                    ),
+                    "text": ("No service ID provided and PAGERDUTY_SERVICE_ID not set in .env"),
                 }
             ],
             "isError": True,
@@ -1642,11 +1634,7 @@ async def pagerduty_create_incident(
             "content": [
                 {
                     "type": "text",
-                    "text": (
-                        "PagerDuty API error: "
-                        f"{e.response.status_code}"
-                        f" - {e.response.text}"
-                    ),
+                    "text": (f"PagerDuty API error: {e.response.status_code} - {e.response.text}"),
                 }
             ],
             "isError": True,
@@ -1667,6 +1655,8 @@ async def pagerduty_update_incident(
             "content": [{"type": "text", "text": "PagerDuty not configured"}],
             "isError": True,
         }
+    if not _SAFE_ID.fullmatch(incident_id):
+        return _invalid_id_error(incident_id)
 
     try:
         headers = {
@@ -1715,11 +1705,7 @@ async def pagerduty_update_incident(
             "content": [
                 {
                     "type": "text",
-                    "text": (
-                        "PagerDuty API error: "
-                        f"{e.response.status_code}"
-                        f" - {e.response.text}"
-                    ),
+                    "text": (f"PagerDuty API error: {e.response.status_code} - {e.response.text}"),
                 }
             ],
             "isError": True,
@@ -1738,6 +1724,8 @@ async def pagerduty_get_incident(incident_id: str) -> dict[str, Any]:
             "content": [{"type": "text", "text": "PagerDuty not configured"}],
             "isError": True,
         }
+    if not _SAFE_ID.fullmatch(incident_id):
+        return _invalid_id_error(incident_id)
 
     try:
         async with httpx.AsyncClient() as client:
@@ -1769,11 +1757,7 @@ async def pagerduty_get_incident(incident_id: str) -> dict[str, Any]:
             "content": [
                 {
                     "type": "text",
-                    "text": (
-                        "PagerDuty API error: "
-                        f"{e.response.status_code}"
-                        f" - {e.response.text}"
-                    ),
+                    "text": (f"PagerDuty API error: {e.response.status_code} - {e.response.text}"),
                 }
             ],
             "isError": True,
@@ -1815,9 +1799,7 @@ async def pagerduty_list_incidents(
             incidents = response.json()["incidents"]
 
             if not incidents:
-                return {
-                    "content": [{"type": "text", "text": "No active incidents found."}]
-                }
+                return {"content": [{"type": "text", "text": "No active incidents found."}]}
 
             lines = [f"=== Active PagerDuty Incidents ({len(incidents)}) ===", ""]
             for inc in incidents:
@@ -1827,9 +1809,7 @@ async def pagerduty_list_incidents(
                     "resolved": "[DONE]",
                 }
                 lines.append(f"{status_emoji.get(inc['status'], '[?]')} {inc['title']}")
-                lines.append(
-                    f"    ID: {inc['id']} | Service: {inc['service']['summary']}"
-                )
+                lines.append(f"    ID: {inc['id']} | Service: {inc['service']['summary']}")
                 lines.append(f"    Created: {inc['created_at']}")
                 lines.append("")
 
@@ -1839,11 +1819,7 @@ async def pagerduty_list_incidents(
             "content": [
                 {
                     "type": "text",
-                    "text": (
-                        "PagerDuty API error: "
-                        f"{e.response.status_code}"
-                        f" - {e.response.text}"
-                    ),
+                    "text": (f"PagerDuty API error: {e.response.status_code} - {e.response.text}"),
                 }
             ],
             "isError": True,
@@ -1882,9 +1858,7 @@ def generate_postmortem_content(
     # Build timeline section
     timeline_html = ""
     if timeline:
-        timeline_html = (
-            "<ul>" + "".join(f"<li>{esc(item)}</li>" for item in timeline) + "</ul>"
-        )
+        timeline_html = "<ul>" + "".join(f"<li>{esc(item)}</li>" for item in timeline) + "</ul>"
     else:
         timeline_html = "<p><em>Timeline to be added</em></p>"
 
@@ -1892,9 +1866,7 @@ def generate_postmortem_content(
     remediation_html = ""
     if remediation_steps:
         remediation_html = (
-            "<ul>"
-            + "".join(f"<li>{esc(step)}</li>" for step in remediation_steps)
-            + "</ul>"
+            "<ul>" + "".join(f"<li>{esc(step)}</li>" for step in remediation_steps) + "</ul>"
         )
     else:
         remediation_html = "<p><em>Remediation steps to be added</em></p>"
@@ -1917,17 +1889,13 @@ def generate_postmortem_content(
             </tr>
             """
     else:
-        action_items_html += (
-            "<tr><td colspan='4'><em>Action items to be added</em></td></tr>"
-        )
+        action_items_html += "<tr><td colspan='4'><em>Action items to be added</em></td></tr>"
     action_items_html += "</tbody></table>"
 
     # PagerDuty link if provided
     pd_link = ""
     if pagerduty_incident_id:
-        pd_link = (
-            f"<p><strong>PagerDuty Incident:</strong> {esc(pagerduty_incident_id)}</p>"
-        )
+        pd_link = f"<p><strong>PagerDuty Incident:</strong> {esc(pagerduty_incident_id)}</p>"
 
     return f"""
     <h1>Incident Summary</h1>
@@ -1971,11 +1939,7 @@ async def confluence_create_postmortem(
             "content": [
                 {
                     "type": "text",
-                    "text": (
-                        "Confluence not configured."
-                        " Set CONFLUENCE_* variables"
-                        " in .env"
-                    ),
+                    "text": ("Confluence not configured. Set CONFLUENCE_* variables in .env"),
                 }
             ],
             "isError": True,
@@ -2033,20 +1997,14 @@ async def confluence_create_postmortem(
             "content": [
                 {
                     "type": "text",
-                    "text": (
-                        "Confluence API error: "
-                        f"{e.response.status_code}"
-                        f" - {e.response.text}"
-                    ),
+                    "text": (f"Confluence API error: {e.response.status_code} - {e.response.text}"),
                 }
             ],
             "isError": True,
         }
     except Exception as e:
         return {
-            "content": [
-                {"type": "text", "text": f"Error creating post-mortem: {str(e)}"}
-            ],
+            "content": [{"type": "text", "text": f"Error creating post-mortem: {str(e)}"}],
             "isError": True,
         }
 
@@ -2066,6 +2024,8 @@ async def confluence_get_page(
             "content": [{"type": "text", "text": "Provide either page_id or title"}],
             "isError": True,
         }
+    if page_id and not _SAFE_ID.fullmatch(page_id):
+        return _invalid_id_error(page_id)
 
     try:
         async with httpx.AsyncClient() as client:
@@ -2124,11 +2084,7 @@ async def confluence_get_page(
             "content": [
                 {
                     "type": "text",
-                    "text": (
-                        "Confluence API error: "
-                        f"{e.response.status_code}"
-                        f" - {e.response.text}"
-                    ),
+                    "text": (f"Confluence API error: {e.response.status_code} - {e.response.text}"),
                 }
             ],
             "isError": True,
@@ -2169,18 +2125,13 @@ async def confluence_list_postmortems(
             results = response.json().get("results", [])
 
             if not results:
-                return {
-                    "content": [{"type": "text", "text": "No post-mortem pages found."}]
-                }
+                return {"content": [{"type": "text", "text": "No post-mortem pages found."}]}
 
             lines = [f"=== Recent Post-Mortems ({len(results)}) ===", ""]
             for page in results:
                 page_url = f"{CONFLUENCE_BASE_URL}{page['_links']['webui']}"
                 lines.append(f"- {page['title']}")
-                lines.append(
-                    f"  ID: {page['id']}"
-                    f" | Last modified: {page['version']['when'][:10]}"
-                )
+                lines.append(f"  ID: {page['id']} | Last modified: {page['version']['when'][:10]}")
                 lines.append(f"  URL: {page_url}")
                 lines.append("")
 
@@ -2190,20 +2141,14 @@ async def confluence_list_postmortems(
             "content": [
                 {
                     "type": "text",
-                    "text": (
-                        "Confluence API error: "
-                        f"{e.response.status_code}"
-                        f" - {e.response.text}"
-                    ),
+                    "text": (f"Confluence API error: {e.response.status_code} - {e.response.text}"),
                 }
             ],
             "isError": True,
         }
     except Exception as e:
         return {
-            "content": [
-                {"type": "text", "text": f"Error listing post-mortems: {str(e)}"}
-            ],
+            "content": [{"type": "text", "text": f"Error listing post-mortems: {str(e)}"}],
             "isError": True,
         }
 
@@ -2222,11 +2167,7 @@ async def read_config_file(path: str) -> dict[str, Any]:
                 "content": [
                     {
                         "type": "text",
-                        "text": (
-                            "Error: Can only read files"
-                            " from config/ directory."
-                            f" Got: {path}"
-                        ),
+                        "text": (f"Error: Can only read files from config/ directory. Got: {path}"),
                     }
                 ],
                 "isError": True,
@@ -2238,7 +2179,7 @@ async def read_config_file(path: str) -> dict[str, Any]:
                 "isError": True,
             }
 
-        with open(full_path, "r") as f:
+        with open(full_path) as f:
             content = f.read()
 
         return {"content": [{"type": "text", "text": f"=== {path} ===\n\n{content}"}]}
@@ -2260,10 +2201,30 @@ async def edit_config_file(path: str, old_value: str, new_value: str) -> dict[st
                 "content": [
                     {
                         "type": "text",
+                        "text": (f"Error: Can only edit files in config/ directory. Got: {path}"),
+                    }
+                ],
+                "isError": True,
+            }
+
+        # run_shell_command's argv allowlist execs this exact file as the trusted demo
+        # stack, so the agent must not be able to rewrite it. Reading it is still fine.
+        #
+        # Compare by file identity, not by spelling: resolve() preserves the case it is
+        # given, so on a case-insensitive filesystem (APFS, which is where this demo
+        # runs under Docker Desktop) "config/Docker-compose.yml" opens the same file
+        # while comparing unequal. samefile needs both paths to exist, hence the guard.
+        compose_path = (PROJECT_ROOT / COMPOSE_FILE).resolve()
+        if full_path == compose_path or (
+            full_path.exists() and compose_path.exists() and full_path.samefile(compose_path)
+        ):
+            return {
+                "content": [
+                    {
+                        "type": "text",
                         "text": (
-                            "Error: Can only edit files"
-                            " in config/ directory."
-                            f" Got: {path}"
+                            f"Error: {COMPOSE_FILE} is not editable."
+                            " Edit config/api-server.env instead."
                         ),
                     }
                 ],
@@ -2276,7 +2237,12 @@ async def edit_config_file(path: str, old_value: str, new_value: str) -> dict[st
                 "isError": True,
             }
 
-        with open(full_path, "r") as f:
+        # newline="" on the read and on the write below: the guard has to judge the bytes
+        # compose will read, and the write must leave every byte outside the replacement
+        # alone. Default text mode turns a bare "\r" into "\n" on read, so rewriting the
+        # file promoted text that was inert on disk ("# note\rDB_POOL_SIZE=1") to a line
+        # of its own.
+        with open(full_path, newline="") as f:
             content = f.read()
 
         if old_value not in content:
@@ -2296,7 +2262,29 @@ async def edit_config_file(path: str, old_value: str, new_value: str) -> dict[st
 
         new_content = content.replace(old_value, new_value, 1)
 
-        with open(full_path, "w") as f:
+        # Validate the resulting file, not new_value: a replace that swaps only the
+        # number ("20" -> "500") carries no "DB_POOL_SIZE=" text of its own, so
+        # inspecting new_value let an out-of-range value through. Refuse only when the
+        # edit *introduces* a problem: during the incident the file legitimately holds
+        # DB_POOL_SIZE=1, and an unrelated edit then should not be blamed for it. An
+        # edit that makes things worse, or the remediation back to 20, is judged on the
+        # resulting file either way, and the deploy guard in run_shell_command re-checks
+        # the whole file unconditionally, so nothing unsafe can reach a container.
+        # Match by identity as well as spelling, for the same reason as the compose
+        # guard above; samefile needs both paths to exist, hence the exists() check.
+        env_path = (PROJECT_ROOT / ENV_FILE).resolve()
+        if full_path == env_path or (env_path.exists() and full_path.samefile(env_path)):
+            problem = _env_file_problem(new_content)
+            if problem and (
+                problem != _env_file_problem(content)
+                or _db_pool_sizes_in(new_content) != _db_pool_sizes_in(content)
+            ):
+                return {
+                    "content": [{"type": "text", "text": f"BLOCKED: {problem}."}],
+                    "isError": True,
+                }
+
+        with open(full_path, "w", newline="") as f:
             f.write(new_content)
 
         return {
@@ -2304,9 +2292,7 @@ async def edit_config_file(path: str, old_value: str, new_value: str) -> dict[st
                 {
                     "type": "text",
                     "text": (
-                        f"Successfully updated {path}:\n"
-                        f"- Changed: {old_value}\n"
-                        f"- To: {new_value}"
+                        f"Successfully updated {path}:\n- Changed: {old_value}\n- To: {new_value}"
                     ),
                 }
             ]
@@ -2326,9 +2312,7 @@ async def run_shell_command(command: str) -> dict[str, Any]:
             args = shlex.split(command)
         except ValueError as e:
             return {
-                "content": [
-                    {"type": "text", "text": f"Error: Invalid command syntax: {e}"}
-                ],
+                "content": [{"type": "text", "text": f"Error: Invalid command syntax: {e}"}],
                 "isError": True,
             }
 
@@ -2362,24 +2346,116 @@ async def run_shell_command(command: str) -> dict[str, Any]:
                 "isError": True,
             }
 
+        def take_compose_file(tokens: list[str]) -> tuple[list[str], str | None]:
+            """Accept an optional `-f/--file` prefix, but only for the demo stack's file."""
+            if tokens[:1] not in (["-f"], ["--file"]):
+                return tokens, None
+            if tokens[1:2] != [COMPOSE_FILE]:
+                return tokens, f"Error: only '-f {COMPOSE_FILE}' is allowed as a compose file."
+            return tokens[2:], None
+
+        rest = args[1:]
+        if executable == "docker-compose":
+            rest, error = take_compose_file(rest)
+            if error:
+                return {"content": [{"type": "text", "text": error}], "isError": True}
+
         allowed_subs = allowed_commands[executable]
-        if allowed_subs is not None:
-            subcommand = args[1] if len(args) > 1 else ""
-            if subcommand not in allowed_subs:
+        subcommand = rest[0] if rest else ""
+        rest = rest[1:]
+        if subcommand not in allowed_subs:
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            f"Error: '{executable}"
+                            f" {subcommand}' is not"
+                            " allowed. Allowed: "
+                            f"{', '.join(sorted(allowed_subs))}"
+                        ),
+                    }
+                ],
+                "isError": True,
+            }
+
+        # `docker compose <sub>` takes the same subcommands as the docker-compose binary
+        if executable == "docker" and subcommand == "compose":
+            rest, error = take_compose_file(rest)
+            if error:
+                return {"content": [{"type": "text", "text": error}], "isError": True}
+            compose_sub = rest[0] if rest else ""
+            rest = rest[1:]
+            if compose_sub not in allowed_commands["docker-compose"]:
                 return {
                     "content": [
                         {
                             "type": "text",
-                            "text": (
-                                f"Error: '{executable}"
-                                f" {subcommand}' is not"
-                                " allowed. Allowed: "
-                                f"{', '.join(sorted(allowed_subs))}"
-                            ),
+                            "text": f"Error: 'docker compose {compose_sub}' is not allowed.",
                         }
                     ],
                     "isError": True,
                 }
+
+        # Security: validate the rest of the argv too. Only a fixed set of flags, the demo
+        # stack's service names and integers may follow, which closes `run -v /:/host`,
+        # `--entrypoint`, an arbitrary `-f <file>`, etc.
+        allowed_flags = {"-d", "--detach", "--build", "--no-deps", "--follow", "--tail"}
+        allowed_services = {
+            "postgres",
+            "api-server",
+            "healthy-services",
+            "traffic-generator",
+            "prometheus",
+            "grafana",
+        }
+        for token in rest:
+            if token.startswith("--tail="):
+                if not token.removeprefix("--tail=").isdigit():
+                    return {
+                        "content": [{"type": "text", "text": f"Error: invalid value '{token}'."}],
+                        "isError": True,
+                    }
+            elif token.startswith("-"):
+                if token not in allowed_flags:
+                    return {
+                        "content": [
+                            {"type": "text", "text": f"Error: flag '{token}' is not allowed."}
+                        ],
+                        "isError": True,
+                    }
+            elif token not in allowed_services and not token.isdigit():
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Error: argument '{token}' is not an allowed service.",
+                        }
+                    ],
+                    "isError": True,
+                }
+
+        # Refuse to bring the stack up while the api-server config is unsafe. Every
+        # up/restart is gated whatever services it names: compose starts a target's
+        # dependency closure, and traffic-generator, prometheus and grafana each pull
+        # api-server in, so the argv cannot say which containers will start without
+        # re-implementing compose's resolver. Gating only "api-server in targeted"
+        # meant `up -d prometheus` started it with an out-of-range value unchecked.
+        if {"up", "restart"} & set(args):
+            env_path = PROJECT_ROOT / ENV_FILE
+            if env_path.is_file():
+                # newline="" for the reason given in edit_config_file: read in default
+                # text mode, "DB_POOL_SIZE=50\r0" on disk looked like a clean 50 here
+                # while compose handed the container "50\r0".
+                with open(env_path, newline="") as f:
+                    problem = _env_file_problem(f.read())
+                if problem:
+                    return {
+                        "content": [
+                            {"type": "text", "text": f"BLOCKED: cannot deploy — {problem}."}
+                        ],
+                        "isError": True,
+                    }
 
         # Run using exec (no shell) to prevent injection via metacharacters
         process = await asyncio.create_subprocess_exec(
@@ -2405,7 +2481,7 @@ async def run_shell_command(command: str) -> dict[str, Any]:
             "content": [{"type": "text", "text": result_text}],
             "isError": process.returncode != 0,
         }
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return {
             "content": [
                 {
@@ -2483,26 +2559,18 @@ async def get_container_logs(container: str, lines: int = 50) -> dict[str, Any]:
             "content": [
                 {
                     "type": "text",
-                    "text": (
-                        f"=== Logs from {container}"
-                        f" (last {lines} lines)"
-                        f" ===\n\n{output}"
-                    ),
+                    "text": (f"=== Logs from {container} (last {lines} lines) ===\n\n{output}"),
                 }
             ]
         }
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return {
-            "content": [
-                {"type": "text", "text": f"Timeout getting logs from {container}"}
-            ],
+            "content": [{"type": "text", "text": f"Timeout getting logs from {container}"}],
             "isError": True,
         }
     except Exception as e:
         return {
-            "content": [
-                {"type": "text", "text": f"Error getting container logs: {str(e)}"}
-            ],
+            "content": [{"type": "text", "text": f"Error getting container logs: {str(e)}"}],
             "isError": True,
         }
 
@@ -2591,9 +2659,7 @@ async def handle_tool_call(name: str, arguments: dict[str, Any]) -> dict[str, An
             resolution_note=arguments.get("resolution_note"),
         )
     elif name == "pagerduty_get_incident":
-        return await pagerduty_get_incident(
-            incident_id=arguments.get("incident_id", "")
-        )
+        return await pagerduty_get_incident(incident_id=arguments.get("incident_id", ""))
     elif name == "pagerduty_list_incidents":
         return await pagerduty_list_incidents(
             status=arguments.get("status", "all"),
@@ -2650,9 +2716,7 @@ def send_response(response: dict[str, Any]) -> None:
 
 def send_error(id: Any, code: int, message: str) -> None:
     """Send a JSON-RPC error response."""
-    send_response(
-        {"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}}
-    )
+    send_response({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}})
 
 
 async def handle_request(request: dict[str, Any]) -> None:

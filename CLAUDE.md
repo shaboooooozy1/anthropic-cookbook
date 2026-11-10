@@ -1,11 +1,11 @@
 # Claude Cookbooks
 
-A collection of Jupyter notebooks and Python examples for building with the Claude API.
+A collection of Jupyter notebooks and Python examples for building with the Claude API and the Claude Agent SDK.
 
 ## Quick Start
 
 ```bash
-# Install dependencies
+# Install dependencies (Python 3.11 or 3.12 required)
 uv sync --all-extras
 
 # Install pre-commit hooks
@@ -16,50 +16,66 @@ cp .env.example .env
 # Edit .env and add your ANTHROPIC_API_KEY
 ```
 
+See `CONTRIBUTING.md` for the full contributor walkthrough (uv install, pip alternative, troubleshooting). `AGENTS.md` holds agent/Cursor-Cloud-specific notes (e.g. that `TEST_MODE`/`MAX_TOKENS` are documentation only and not read by the test harness, and how to launch Jupyter).
+
+`.env.example` also exposes optional knobs: `CLAUDE_MODEL` (default model used by some notebooks for cost control, e.g. `claude-haiku-4-5`), `TEST_MODE`, `MAX_TOKENS`, `DEBUG`. Note that `TEST_MODE`/`MAX_TOKENS` are documentation-only defaults — the test harness does not read them. Some third-party / embedding notebooks additionally need `VOYAGE_API_KEY`.
+
 ## Development Commands
 
 ```bash
-make format        # Format code with ruff
-make lint          # Run linting
-make check         # Run format-check + lint
-make fix           # Auto-fix issues + format
-make test          # Run pytest
+make help                 # List all available make targets
+make format               # Format code with ruff
+make lint                 # Run linting
+make check                # format-check + lint (run before committing)
+make fix                  # Auto-fix issues + format
+make install              # uv sync --all-extras
+make test                 # Run pytest (unit tests for validators, registry, utils, skills)
+make test-cov             # Run pytest with coverage report
+
+# Notebook testing
+make test-notebooks       # Structure tests (fast, no API calls)
+make test-notebooks-exec  # Execution tests (slow, requires API key)
+make test-notebooks-tox   # Run in isolated tox environment
+make test-notebooks-quick # Quick validation without pytest
+
+# Target a single notebook or directory
+make test-notebooks NOTEBOOK=tool_use/calculator_tool.ipynb
+make test-notebooks NOTEBOOK_DIR=capabilities
+
+make sort-authors         # Sort authors.yaml alphabetically
+make clean                # Remove cache files
 ```
 
-Or directly with uv:
-
-```bash
-uv run ruff format .           # Format
-uv run ruff check .            # Lint
-uv run ruff check --fix .      # Auto-fix
-uv run pre-commit run --all-files
-```
+Direct `uv` equivalents work too: `uv run ruff format .`, `uv run ruff check --fix .`, `uv run pre-commit run --all-files`.
 
 ## Code Style
 
 - **Line length:** 100 characters
 - **Quotes:** Double quotes
-- **Formatter:** Ruff
-
-Notebooks have relaxed rules for mid-file imports (E402), redefinitions (F811), and variable naming (N803, N806).
+- **Formatter / linter:** Ruff (rules `E, F, I, W, UP, S, B`; see `pyproject.toml`)
+- **Notebooks** have relaxed rules for mid-file imports (E402), redefinitions (F811), and variable naming (N803, N806).
 
 ## Git Workflow
 
-**Branch naming:** `<username>/<feature-description>`
+**Branch naming:** `<username>/<feature-description>` (e.g., `alice/add-rag-example`)
 
-**Commit format (conventional commits):**
+**Conventional commits:**
 ```
 feat(scope): add new feature
 fix(scope): fix bug
 docs(scope): update documentation
 style: lint/format
+refactor: code restructuring
+test: tests
+chore: maintenance
+ci: CI/CD changes
 ```
 
 ## Key Rules
 
 1. **API Keys:** Never commit `.env` files. Use `dotenv.load_dotenv()` then access keys via `os.environ` or `os.getenv()`
 
-2. **Dependencies:** Use `uv add <package>` or `uv add --dev <package>`. Never edit pyproject.toml directly.
+2. **Dependencies:** Use `uv add <package>` or `uv add --dev <package>`. Don't edit `pyproject.toml` directly.
 
 3. **Models:** Use current Claude models. Check platform.claude.com/docs for latest versions.
    - Opus: `claude-opus-5-5`
@@ -76,19 +92,30 @@ style: lint/format
      - Note: these are the IDs for Bedrock's Messages-API endpoint. Integrations that only go through InvokeModel (for example `boto3` `invoke_model`, or fine-tuning jobs) use the dated form instead, e.g. `anthropic.claude-haiku-4-5-20251001-v1:0`.
 
 4. **Notebooks:**
-   - Keep outputs in notebooks (intentional for demonstration)
-   - One concept per notebook
-   - Test that notebooks run top-to-bottom without errors
+   - **Keep outputs** — they demonstrate expected results and are intentionally checked in.
+   - One concept per notebook; clear narrative markdown cells.
+   - Must run top-to-bottom without errors.
+   - Use minimal tokens for examples to keep costs low.
 
-5. **Quality checks:** Run `make check` before committing. Pre-commit hooks validate formatting and notebook structure.
+5. **Quality checks:** Run `make check` before committing. Pre-commit hooks (`.pre-commit-config.yaml`) run `ruff-check --fix`, `ruff-format`, `scripts/validate_notebooks.py` on changed `.ipynb` files, and `scripts/validate_authors_sorted.py --fix` on `authors.yaml`.
 
 ## Slash Commands
 
-These commands are available in Claude Code and CI:
+Defined in `.claude/commands/` and used both in Claude Code locally and in CI:
 
-- `/notebook-review` - Review notebook quality
-- `/model-check` - Validate Claude model references
-- `/link-review` - Check links in changed files
+- `/notebook-review` — Comprehensive notebook quality check
+- `/model-check` — Validate Claude model references are current
+- `/link-review` — Validate links in markdown and notebooks
+- `/add-registry` — Add a new notebook entry to `registry.yaml`
+- `/review-pr` — Review an open pull request
+- `/review-pr-ci` — Review a PR and post the review (CI/automated use)
+- `/review-issue` — Review and respond to a GitHub issue
+
+## Subagents and Skills
+
+- **`.claude/agents/code-reviewer.md`** — Subagent for reviewing notebook/script changes (Python/Jupyter best practices and project standards). Use proactively after significant code changes.
+- **`.claude/skills/cookbook-audit/`** — Skill for auditing a notebook against the cookbook rubric. Has its own `SKILL.md`, `style_guide.md`, and `validate_notebook.py`.
+- **`skills/CLAUDE.md`** — Detailed Claude Code guide for the Skills (document generation) cookbook, including beta-API gotchas for the Files API and `client.beta.*` namespace.
 
 ## Project Structure
 
@@ -107,7 +134,19 @@ scripts/           # Validation scripts
 
 ## Adding a New Cookbook
 
-1. Create notebook in the appropriate directory
-2. Add entry to `registry.yaml` with title, description, path, authors, categories
-3. Add author info to `authors.yaml` if new contributor
-4. Run quality checks and submit PR
+1. Create the notebook in the appropriate top-level directory.
+2. Add an entry to `registry.yaml` with `title`, `description`, `path`, `authors`, `categories`, `date`. (Use `/add-registry` to scaffold.)
+3. Add author info to `authors.yaml` if you're a new contributor (`make sort-authors` keeps it sorted).
+4. Run `make check` and `make test-notebooks` to validate.
+5. Open a PR — CI will run lint, notebook structure tests, model check, link check, and Claude review.
+
+## CI Overview
+
+PRs trigger:
+- `lint-format.yml` — ruff format + lint on changed Python/notebooks
+- `notebook-tests.yml` — pytest structure tests against changed notebooks
+- `notebook-quality.yml` + `notebook-diff-comment.yml` — Claude-driven review on diffs
+- `verify-authors.yml` — authors.yaml sorted + registry author references valid
+- `links.yml` / `claude-link-review.yml` — link validation
+- `claude-model-check.yml` — confirm model IDs match current aliases
+- `claude-pr-review.yml` — overall Claude review

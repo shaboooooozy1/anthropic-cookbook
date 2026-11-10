@@ -42,7 +42,7 @@ services:
       POSTGRES_PASSWORD: demo
       POSTGRES_DB: demo
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
       - postgres_data:/var/lib/postgresql/data
@@ -58,7 +58,7 @@ services:
       context: ../services
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     env_file:
       - ./api-server.env
     depends_on:
@@ -79,7 +79,7 @@ services:
       - ../scripts/healthy_services.py:/app/healthy_services.py
     command: python healthy_services.py
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     restart: unless-stopped
 
   # Traffic Generator
@@ -103,7 +103,7 @@ services:
   prometheus:
     image: prom/prometheus:latest
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     extra_hosts:
@@ -121,7 +121,7 @@ services:
   grafana:
     image: grafana/grafana:latest
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       # Demo only — change for any non-local deployment
       - GF_SECURITY_ADMIN_PASSWORD=demo
@@ -153,7 +153,7 @@ Path("config/api-server.env").write_text("""\
 DB_POOL_SIZE=20
 DB_POOL_TIMEOUT=2
 
-# Database connection — demo only, change for any non-local deployment
+# Database connection - demo only, change for any non-local deployment
 DB_HOST=postgres
 DB_PORT=5432
 DB_NAME=demo
@@ -173,7 +173,7 @@ Path("config/api-server.env.backup").write_text("""\
 DB_POOL_SIZE=20
 DB_POOL_TIMEOUT=2
 
-# Database connection — demo only, change for any non-local deployment
+# Database connection - demo only, change for any non-local deployment
 DB_HOST=postgres
 DB_PORT=5432
 DB_NAME=demo
@@ -536,12 +536,12 @@ async def list_users():
             )
         else:
             logger.error(f"Database error: {error_msg}")
-            raise HTTPException(status_code=500, detail=f"Database error: {error_msg}")
+            raise HTTPException(status_code=500, detail="Database error")
 
     except Exception as e:
         status = "500"
         logger.error(f"Unexpected error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
     finally:
         duration_ms = (time.time() - start_time) * 1000
@@ -586,7 +586,7 @@ async def list_orders():
     except Exception as e:
         status = "500"
         logger.error(f"Orders endpoint error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
     finally:
         duration_ms = (time.time() - start_time) * 1000
@@ -630,7 +630,7 @@ async def get_stats():
     except Exception as e:
         status = "500"
         logger.error(f"Stats endpoint error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
     finally:
         duration_ms = (time.time() - start_time) * 1000
@@ -1030,23 +1030,65 @@ Path("hooks/validate_pool_size.sh").write_text("""\
 # Validates that DB_POOL_SIZE changes stay within safe operating range.
 INPUT=$(cat)
 
-NEW_VALUE=$(echo "$INPUT" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-inp = data.get('input', {})
-replace_val = inp.get('new_value', '') or inp.get('replace', '')
-for part in replace_val.split('\\n'):
-    if 'DB_POOL_SIZE' in part:
-        val = part.split('=')[1].strip()
-        print(val)
-        break
+# Mirrors the check in sre_mcp_server.py as far as the replacement text alone
+# allows: printable ASCII and no quotes outside comments, no carriage return
+# that is not part of a line ending, compose's three assignment spellings, and
+# a plain integer in range. Prints exactly OK or the problem, and anything else
+# — including nothing at all — blocks, so a crash in here cannot read as
+# "nothing wrong" (its stderr goes to /dev/null, and the old version treated
+# empty output as a pass).
+VERDICT=$(echo "$INPUT" | python3 -c "
+import sys, json, re
+LINE = re.compile(r'^[ \\t]*(?:export[ \\t]+)?DB_POOL_SIZE[ \\t]*[:=](.*)')
+SKIP = re.compile(r'^[ \\t]*(?:#.*)?\\Z')
+OKLINE = re.compile(r'^[\\t\\r\\x20-\\x7e]*\\Z')
+try:
+    # A PreToolUse hook's stdin carries the tool arguments under 'tool_input'.
+    # Reading 'input' returned {} on every call, so the value was always empty
+    # and this guard exited 0 for out-of-range values instead of blocking them.
+    inp = json.load(sys.stdin).get('tool_input', {})
+    text = inp.get('new_value', '') or inp.get('replace', '')
+    problem = ''
+    # A carriage return that is not half of a line ending is refused, as in
+    # sre_mcp_server.py: compose strips one before a key, which hides the
+    # assignment from LINE.
+    if '\\r' in text.replace('\\r\\n', ''):
+        problem = 'replacement text has a carriage return that is not part of a line ending'
+    for line in text.split('\\n'):
+        if problem:
+            break
+        if SKIP.match(line):
+            continue
+        if not OKLINE.match(line):
+            problem = 'replacement text may only use printable ASCII outside comments'
+            break
+        # Quotes are refused too (chr() because this code sits inside a quoted
+        # shell string): after a quoted value compose reads the next statement
+        # from the same line, where LINE cannot find it.
+        if chr(34) in line or chr(39) in line:
+            problem = 'replacement text may not use quotes outside comments'
+            break
+        found = LINE.match(line)
+        if not found:
+            continue
+        raw = found.group(1).strip()
+        try:
+            size = int(raw)
+        except ValueError:
+            problem = 'DB_POOL_SIZE=' + repr(raw) + ' is not a plain integer'
+            break
+        if not 5 <= size <= 100:
+            problem = 'DB_POOL_SIZE=' + str(size) + ' is outside safe range (5-100)'
+            break
+    print(problem if problem else 'OK')
+except Exception as exc:
+    print('hook could not read its input (' + str(exc) + ')')
 " 2>/dev/null)
 
-if [ -n "$NEW_VALUE" ]; then
-    if [ "$NEW_VALUE" -lt 5 ] 2>/dev/null || [ "$NEW_VALUE" -gt 100 ] 2>/dev/null; then
-        echo "BLOCKED: DB_POOL_SIZE=$NEW_VALUE is outside safe range (5-100)"
-        exit 1
-    fi
+if [ "$VERDICT" != "OK" ]; then
+    echo "BLOCKED: ${VERDICT:-hook produced no verdict}"
+    # 2, not 1: a PreToolUse hook denies the call on exit 2 specifically.
+    exit 2
 fi
 exit 0
 """)
@@ -1059,19 +1101,66 @@ INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-print(data.get('input', {}).get('command', ''))
+# 'tool_input', not 'input' — see validate_pool_size.sh above.
+print(data.get('tool_input', {}).get('command', ''))
 " 2>/dev/null)
 
-if echo "$COMMAND" | grep -q "up.*api-server"; then
+# Any up or restart, whatever services it names: compose starts a target's
+# dependency closure, so "up -d prometheus" starts api-server too. The old
+# matcher needed the literal "api-server" after "up" and so missed that, a
+# whole-stack "up -d", and every "restart".
+if echo "$COMMAND" | grep -Eq '(^| )(up|restart)( |$)'; then
     CONFIG_FILE="config/api-server.env"
     if [ -f "$CONFIG_FILE" ]; then
-        POOL_SIZE=$(grep DB_POOL_SIZE "$CONFIG_FILE" | cut -d= -f2)
-        if [ -n "$POOL_SIZE" ] && \
-           { [ "$POOL_SIZE" -lt 5 ] 2>/dev/null || \
-             [ "$POOL_SIZE" -gt 100 ] 2>/dev/null; }; then
-            echo "BLOCKED: Cannot deploy with \
-DB_POOL_SIZE=$POOL_SIZE (safe range: 5-100)"
-            exit 1
+        # Checked in python, which prints exactly OK or the problem: 'grep DB_POOL_SIZE |
+        # cut -d= -f2' fed a two-line string into '[ -lt ]', whose error 2>/dev/null
+        # swallowed, so a duplicate key deployed unchecked. Mirrors the check in
+        # sre_mcp_server.py.
+        VERDICT=$(python3 -c "
+import sys, re
+# The last alternative matches a key with no value: compose fills that in from
+# its own environment, so it is treated as an assignment with an empty value.
+LINE = re.compile(r'^[ \\t]*(?:export[ \\t]+)?DB_POOL_SIZE[ \\t]*(?:[:=](.*)|\\r?\\Z)')
+SKIP = re.compile(r'^[ \\t]*(?:#.*)?\\Z')
+OKLINE = re.compile(r'^[\\t\\r\\x20-\\x7e]*\\Z')
+try:
+    # newline='' keeps a bare carriage return as one: default text mode turns it
+    # into a line break, which compose does not. Refused, as in sre_mcp_server.py.
+    text = open(sys.argv[1], encoding='utf-8', newline='').read()
+    problem = ''
+    if '\\r' in text.replace('\\r\\n', ''):
+        problem = 'config/api-server.env has a carriage return that is not part of a line ending'
+    for line in text.split('\\n'):
+        if problem or SKIP.match(line):
+            continue
+        if not OKLINE.match(line):
+            problem = 'config/api-server.env uses non-ASCII outside its comments'
+        # chr() because this code sits inside a quoted shell string. After a
+        # quoted value compose reads the next statement from the same line.
+        elif chr(34) in line or chr(39) in line:
+            problem = 'config/api-server.env uses quotes outside its comments'
+    values = [(m.group(1) or '').strip() for m in map(LINE.match, text.split('\\n')) if m]
+    if not problem and len(values) > 1:
+        problem = 'config/api-server.env assigns DB_POOL_SIZE ' + str(len(values)) + ' times'
+    for raw in values:
+        if problem:
+            break
+        try:
+            size = int(raw)
+        except ValueError:
+            problem = 'DB_POOL_SIZE=' + repr(raw) + ' is not a plain integer'
+            break
+        if not 5 <= size <= 100:
+            problem = 'DB_POOL_SIZE=' + str(size) + ' is outside safe range (5-100)'
+            break
+    print(problem if problem else 'OK')
+except Exception as exc:
+    print('could not read config/api-server.env (' + str(exc) + ')')
+" "$CONFIG_FILE" 2>/dev/null)
+        if [ "$VERDICT" != "OK" ]; then
+            echo "BLOCKED: Cannot deploy - ${VERDICT:-hook produced no verdict}"
+            # 2, not 1: a PreToolUse hook denies the call on exit 2 specifically.
+            exit 2
         fi
     fi
 fi
@@ -1092,7 +1181,4 @@ print("  Docker Compose:      config/docker-compose.yml")
 print("  Prometheus config:   config/prometheus.yml")
 print("  API server:          services/api_server.py")
 print("  Traffic generator:   scripts/traffic_generator.py")
-print(
-    "  Safety hooks:        hooks/validate_pool_size.sh,"
-    " hooks/validate_config_before_deploy.sh"
-)
+print("  Safety hooks:        hooks/validate_pool_size.sh, hooks/validate_config_before_deploy.sh")

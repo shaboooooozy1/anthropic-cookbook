@@ -1,0 +1,79 @@
+name: Unit Tests
+
+on:
+  pull_request:
+    paths:
+      - '**/*.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'Makefile'
+      - '.github/workflows/unit-tests.yml'
+      # The suite asserts invariants on these data files (duplicate registry
+      # paths, author ordering), so data-only PRs must run it too.
+      - 'registry.yaml'
+      - 'authors.yaml'
+  push:
+    branches: [main]
+    paths:
+      - '**/*.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'registry.yaml'
+      - 'authors.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0 (sha-pinned)
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --frozen --all-extras
+
+      - name: Run unit tests
+        # Run the fast, hermetic unit/logic suite (registry, notebook-validator
+        # helpers, skills utilities, financial-model math, memory tool). The
+        # notebook structure/execution tests under tests/notebook_tests are
+        # covered by notebook-tests.yml and are excluded here to keep this job
+        # fast and API-key-free.
+        #
+        # `shell: bash` is load-bearing, not cosmetic. GitHub's *unspecified*
+        # default shell is `bash -e {0}`, which has no `pipefail`, so the exit
+        # status of the pipeline below would be `tee`'s (always 0) and a failing
+        # pytest run would report success. Specifying `bash` explicitly runs
+        # `bash --noprofile --norc -eo pipefail {0}`, so pytest's non-zero exit
+        # propagates through `| tee` and fails the job.
+        shell: bash
+        run: |
+          uv run pytest \
+            --ignore=tests/notebook_tests \
+            -p no:cacheprovider \
+            --junitxml=unit-test-results.xml | tee unit-test-output.txt
+
+      - name: Publish test summary
+        if: always()
+        run: |
+          {
+            echo "## Unit Test Results (Python ${{ matrix.python-version }})"
+            echo ""
+            echo '```'
+            tail -n 1 unit-test-output.txt 2>/dev/null || echo "No test output produced."
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

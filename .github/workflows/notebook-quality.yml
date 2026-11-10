@@ -6,6 +6,7 @@ on:
       - '**/*.ipynb'
       - 'pyproject.toml'
       - 'uv.lock'
+      - '.github/workflows/notebook-quality.yml'
   push:
     branches: [main]
     paths:
@@ -21,7 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0  # Need full history for diff
       
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0 (sha-pinned)
@@ -43,20 +46,63 @@ jobs:
       
       - name: Validate notebook structure
         id: validate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        # shell: bash runs `bash --noprofile --norc -eo pipefail {0}`. The default
+        # `bash -e {0}` has no pipefail, so `validate_notebooks.py | tee` returned
+        # tee's 0 and a failing validator was reported as "no issues".
+        shell: bash
         run: |
-          uv run python scripts/validate_notebooks.py | tee validation_output.txt
-          # Check if validation found issues
-          if grep -q "❌" validation_output.txt; then
-            echo "has_issues=true" >> $GITHUB_OUTPUT
-            exit 1
+          # scripts/validate_notebooks.py only checks the .ipynb paths passed as
+          # arguments (with none it prints "No notebooks to validate" and exits 0),
+          # so hand it the notebooks changed in this PR / push.
+          # The if-conditions (exempt from -e) make a git failure fail the step
+          # instead of being masked into "no notebooks changed" by `|| echo ""`.
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            git fetch origin "$BASE_REF"
+            # --diff-filter=d excludes deleted notebooks, which cannot be read.
+            if ! DIFF_OUT=$(git diff --name-only --diff-filter=d "origin/$BASE_REF"...HEAD); then
+              echo "::error::git diff origin/$BASE_REF...HEAD failed; cannot determine changed notebooks"
+              exit 1
+            fi
           else
-            echo "has_issues=false" >> $GITHUB_OUTPUT
+            if ! DIFF_OUT=$(git diff --name-only --diff-filter=d HEAD~1 HEAD); then
+              echo "::error::git diff HEAD~1 HEAD failed; cannot determine changed notebooks"
+              exit 1
+            fi
+          fi
+          # grep exits 1 when nothing matches; that is the only status deliberately discarded.
+          CHANGED_NOTEBOOKS=$(printf '%s\n' "$DIFF_OUT" | grep '\.ipynb$' || true)
+
+          if [ -z "$CHANGED_NOTEBOOKS" ]; then
+            echo "No notebooks changed; nothing to validate"
+            echo "has_issues=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Validating changed notebooks:"
+          echo "$CHANGED_NOTEBOOKS"
+          mapfile -t NOTEBOOKS <<< "$CHANGED_NOTEBOOKS"
+
+          # The pipeline sits in an `if` condition so that under -e a failing
+          # validator does not abort the step before has_issues is written. The
+          # validator's exit status is the primary signal; the cross-mark grep only
+          # tells a reported issue apart from a crash (traceback, uv failure).
+          if uv run python scripts/validate_notebooks.py "${NOTEBOOKS[@]}" 2>&1 | tee validation_output.txt; then
+            echo "has_issues=false" >> "$GITHUB_OUTPUT"
+          else
+            if ! grep -q "❌" validation_output.txt; then
+              echo "::error::validate_notebooks.py exited non-zero without reporting issues; see validation_output.txt"
+            fi
+            echo "has_issues=true" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
         continue-on-error: true
 
       - name: Summarize validation issues with Claude
-        if: github.event_name == 'pull_request' && steps.validate.outputs.has_issues == 'true'
-        uses: anthropics/claude-code-action@bbfaf8e1ffe3e688f7ab65ceee78de241e24a238 # v1.0.132 (>=v1.0.130 for WIF inputs)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && steps.validate.outputs.has_issues == 'true'
+        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231 (>=v1.0.130 for WIF inputs)
         with:
           # Anthropic auth via Workload Identity Federation — the action
           # exchanges this job's GitHub OIDC token (id-token: write above)
@@ -83,11 +129,21 @@ jobs:
             Format as a nice GitHub comment with markdown. Use emoji sparingly for clarity.
             Post using: gh pr comment $PR_NUMBER --body "your comment"
           claude_args: |
-            --allowedTools "Bash(gh pr comment:*),Bash(cat:*),Read"
+            --allowedTools "Bash(gh pr comment:*),Read"
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
 
-      # Only run API tests on main branch or for maintainers (costs money)
+      # The validate step runs with continue-on-error so the Claude summary
+      # above can post first; this gate makes the result count toward the job.
+      # `!= 'false'` also fails the job when the validate step crashed before
+      # writing the output.
+      - name: Fail job on validation issues
+        if: steps.validate.outputs.has_issues != 'false'
+        run: |
+          echo "::error::Notebook validation reported issues or did not complete; see the 'Validate notebook structure' step."
+          exit 1
+
+      # Only run API tests on main branch or for same-repo branches (costs money)
       # TODO: this step still reads the static ANTHROPIC_API_KEY secret. The
       # claude-code-action steps above use Workload Identity Federation; this
       # direct-API step needs a separate inline OIDC mint+exchange (or the
@@ -95,9 +151,8 @@ jobs:
       # notebook execution failure is caught by the `|| echo` below.
       - name: Execute notebooks (API Testing)
         if: |
-          github.event_name == 'push' || 
-          github.event.pull_request.author_association == 'MEMBER' ||
-          github.event.pull_request.author_association == 'OWNER'
+          github.event_name == 'push' ||
+          github.event.pull_request.head.repo.full_name == github.repository
         env:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -115,23 +170,32 @@ jobs:
               || echo "⚠️  Failed: $notebook"
           done
       
-      # Mock testing for external contributors
+      # Mock testing for fork PRs
       - name: Execute notebooks (Mock Testing)
         if: |
-          github.event_name == 'pull_request' && 
-          github.event.pull_request.author_association != 'MEMBER' &&
-          github.event.pull_request.author_association != 'OWNER'
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name != github.repository
         run: |
           echo "🔒 Running in mock mode for external contributor"
 
+          # `python -m nbformat.validator FILE` only imports the module and ignores
+          # FILE (nbformat.validator has no __main__ block), so it always exited 0 and
+          # validated nothing. Call nbformat.validate() directly, and aggregate
+          # inside `if !` so -e does not stop at the first invalid notebook and
+          # every failure is reported.
+          failed=0
           for notebook in $(find . -name "*.ipynb" -not -path "*/.*"); do
             echo "📓 Validating structure: $notebook"
-            uv run python -m nbformat.validator "$notebook"
+            if ! uv run python -c 'import sys, nbformat; nbformat.validate(nbformat.read(sys.argv[1], as_version=4))' "$notebook"; then
+              echo "::error file=${notebook#./}::notebook fails nbformat schema validation"
+              failed=$((failed+1))
+            fi
           done
+          [ "$failed" -eq 0 ] || { echo "::error::$failed invalid notebook(s)"; exit 1; }
       
       - name: Upload test outputs
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: notebook-test-outputs
           path: test_outputs/

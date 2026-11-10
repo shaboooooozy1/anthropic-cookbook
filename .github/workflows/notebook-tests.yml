@@ -7,6 +7,7 @@ on:
       - 'tests/notebook_tests/**'
       - 'pyproject.toml'
       - 'uv.lock'
+      - '.github/workflows/notebook-tests.yml'
   push:
     branches: [main]
     paths:
@@ -23,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0  # Need full history for diff
 
@@ -45,14 +46,26 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
         run: |
+          # The if-conditions (exempt from -e) make a git failure fail the step
+          # instead of being masked into "no notebooks changed" by `|| echo ""`.
           if [ "$EVENT_NAME" = "pull_request" ]; then
             # For PRs, get notebooks changed compared to base branch
             git fetch origin "$BASE_REF"
-            CHANGED_NOTEBOOKS=$(git diff --name-only "origin/$BASE_REF"...HEAD | grep '\.ipynb$' || echo "")
+            # --diff-filter=d excludes deleted notebooks: pytest exits 1 when
+            # --notebook points at a path that no longer exists.
+            if ! DIFF_OUT=$(git diff --name-only --diff-filter=d "origin/$BASE_REF"...HEAD); then
+              echo "::error::git diff origin/$BASE_REF...HEAD failed; cannot determine changed notebooks"
+              exit 1
+            fi
           else
             # For push to main, get notebooks changed in the push
-            CHANGED_NOTEBOOKS=$(git diff --name-only HEAD~1 HEAD | grep '\.ipynb$' || echo "")
+            if ! DIFF_OUT=$(git diff --name-only --diff-filter=d HEAD~1 HEAD); then
+              echo "::error::git diff HEAD~1 HEAD failed; cannot determine changed notebooks"
+              exit 1
+            fi
           fi
+          # grep exits 1 when nothing matches; that is the only status deliberately discarded.
+          CHANGED_NOTEBOOKS=$(printf '%s\n' "$DIFF_OUT" | grep '\.ipynb$' || true)
 
           if [ -z "$CHANGED_NOTEBOOKS" ]; then
             echo "No notebooks changed"
@@ -72,6 +85,10 @@ jobs:
       - name: Run notebook structure tests
         id: structure-tests
         if: steps.changed-notebooks.outputs.has_notebooks == 'true'
+        # shell: bash runs `bash --noprofile --norc -eo pipefail {0}`. The default
+        # `bash -e {0}` has no pipefail, so `pytest ... | tee` returned tee's 0 and
+        # every notebook was reported as passing even when pytest failed.
+        shell: bash
         run: |
           echo "## Notebook Structure Tests" >> $GITHUB_STEP_SUMMARY
 
@@ -125,9 +142,10 @@ jobs:
       - name: Post test results to PR
         if: |
           github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
           steps.changed-notebooks.outputs.has_notebooks == 'true' &&
           steps.structure-tests.outputs.has_failures == 'true'
-        uses: anthropics/claude-code-action@bbfaf8e1ffe3e688f7ab65ceee78de241e24a238 # v1.0.132 (>=v1.0.130 for WIF inputs)
+        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231 (>=v1.0.130 for WIF inputs)
         with:
           # Anthropic auth via Workload Identity Federation — the action
           # exchanges this job's GitHub OIDC token (id-token: write above)
@@ -159,7 +177,7 @@ jobs:
 
             Post using: gh pr comment $PR_NUMBER --body "your comment"
           claude_args: |
-            --allowedTools "Bash(gh pr comment:*),Bash(cat:*),Read"
+            --allowedTools "Bash(gh pr comment:*),Read"
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
 
@@ -168,15 +186,18 @@ jobs:
       # direct-API step needs a separate inline OIDC mint+exchange (or the
       # anthropic SDK's WIF env-var trio). Gracefully skips when the secret
       # is absent (the `[ -z "$ANTHROPIC_API_KEY" ]` guard below).
-      - name: Run notebook execution tests (maintainers only)
+      - name: Run notebook execution tests (same-repo branches only)
         id: execution-tests
         if: |
           steps.changed-notebooks.outputs.has_notebooks == 'true' &&
           (github.event_name == 'push' ||
-           github.event.pull_request.author_association == 'MEMBER' ||
-           github.event.pull_request.author_association == 'OWNER')
+           github.event.pull_request.head.repo.full_name == github.repository)
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        # shell: bash runs `bash --noprofile --norc -eo pipefail {0}`. The default
+        # `bash -e {0}` has no pipefail, so `pytest ... | tee` returned tee's 0 and a
+        # failing or timed-out pytest was reported as "Executed".
+        shell: bash
         run: |
           echo "## Notebook Execution Tests" >> $GITHUB_STEP_SUMMARY
 
@@ -189,8 +210,36 @@ jobs:
           mkdir -p execution_outputs
           EXEC_FAILED=0
 
+          # The notebooks allowed to opt out of execution, one quoted argument each.
+          # A notebook's own metadata.ci.skip_execution is NOT sufficient: it travels
+          # inside the notebook under test, so a notebook could grant itself the
+          # exemption and leave this required check green while never executing.
+          # Widening this list means editing the workflow, which shows up in review.
+          execution_opt_out_allowed() {
+            printf '%s\n' \
+              'claude_agent_sdk/03_The_site_reliability_agent.ipynb' \
+              | grep -Fxq -- "$1"
+          }
+
           while IFS= read -r notebook; do
             if [ -z "$notebook" ]; then
+              continue
+            fi
+
+            # Notebooks that cannot run headless opt out via notebook metadata
+            # (metadata.ci.skip_execution) AND the allowlist above. Execution is
+            # blocking now, so without an opt-out a required check goes red on a
+            # notebook that can never pass - e.g. one needing a live Docker stack or
+            # files outside its own directory, since nbconvert runs the kernel in the
+            # notebook's directory. An opt-out that is not allowlisted fails the job
+            # rather than skipping quietly, so self-certification turns a check red.
+            if [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("metadata",{}).get("ci",{}).get("skip_execution", False))' "$notebook")" = "True" ]; then
+              if execution_opt_out_allowed "$notebook"; then
+                echo "⏭️ Skipped (opted out of execution): $notebook" >> $GITHUB_STEP_SUMMARY
+                continue
+              fi
+              echo "❌ $notebook sets metadata.ci.skip_execution but is not in this workflow's opt-out allowlist" >> $GITHUB_STEP_SUMMARY
+              EXEC_FAILED=$((EXEC_FAILED + 1))
               continue
             fi
 
@@ -216,7 +265,7 @@ jobs:
 
       - name: Upload test artifacts
         if: always() && steps.changed-notebooks.outputs.has_notebooks == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: notebook-test-results
           path: |
@@ -239,7 +288,10 @@ jobs:
           # external contributors are never gated on API execution.
           EXEC_FAILURES: ${{ steps.execution-tests.outputs.exec_failures }}
         run: |
-          if [ "${{ steps.structure-tests.outputs.has_failures }}" = "true" ]; then
+          # The structure step has continue-on-error, so an early abort leaves
+          # has_failures empty. Require an explicit "false" rather than passing
+          # by omission.
+          if [ "${{ steps.structure-tests.outputs.has_failures }}" != "false" ]; then
             echo "❌ Some notebook tests failed. Please fix the issues above."
             exit 1
           fi

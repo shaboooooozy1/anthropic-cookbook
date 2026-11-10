@@ -122,13 +122,14 @@ class TestCellOutputs:
             pytest.fail("Found error outputs:\n" + "\n".join(f"  - {i}" for i in issues))
 
     def test_no_empty_code_cells(self, notebook_cells: list[CellInfo]) -> None:
-        """Test that there are no empty code cells (warning only)."""
+        """Test that there are no empty code cells."""
         empty_code_cells = [c for c in notebook_cells if c.cell_type == "code" and c.is_empty]
 
         if empty_code_cells:
             indices = [str(c.index) for c in empty_code_cells]
-            pytest.skip(
-                f"Found {len(empty_code_cells)} empty code cell(s) at indices: {', '.join(indices)}"
+            pytest.fail(
+                f"Found {len(empty_code_cells)} empty code cell(s) at indices: {', '.join(indices)}. "
+                "Remove empty code cells before committing."
             )
 
 
