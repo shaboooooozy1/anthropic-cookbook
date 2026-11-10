@@ -1030,11 +1030,13 @@ Path("hooks/validate_pool_size.sh").write_text("""\
 # Validates that DB_POOL_SIZE changes stay within safe operating range.
 INPUT=$(cat)
 
-# Mirrors the check in sre_mcp_server.py: printable ASCII outside comments,
-# compose's three assignment spellings, and a plain integer in range. Prints
-# exactly OK or the problem, and anything else — including nothing at all —
-# blocks, so a crash in here cannot read as "nothing wrong" (its stderr goes to
-# /dev/null, and the old version treated empty output as a pass).
+# Mirrors the check in sre_mcp_server.py as far as the replacement text alone
+# allows: printable ASCII and no quotes outside comments, no carriage return
+# that is not part of a line ending, compose's three assignment spellings, and
+# a plain integer in range. Prints exactly OK or the problem, and anything else
+# — including nothing at all — blocks, so a crash in here cannot read as
+# "nothing wrong" (its stderr goes to /dev/null, and the old version treated
+# empty output as a pass).
 VERDICT=$(echo "$INPUT" | python3 -c "
 import sys, json, re
 LINE = re.compile(r'^[ \\t]*(?:export[ \\t]+)?DB_POOL_SIZE[ \\t]*[:=](.*)')
@@ -1047,6 +1049,11 @@ try:
     inp = json.load(sys.stdin).get('tool_input', {})
     text = inp.get('new_value', '') or inp.get('replace', '')
     problem = ''
+    # A carriage return that is not half of a line ending is refused, as in
+    # sre_mcp_server.py: compose strips one before a key, which hides the
+    # assignment from LINE.
+    if '\\r' in text.replace('\\r\\n', ''):
+        problem = 'replacement text has a carriage return that is not part of a line ending'
     for line in text.split('\\n'):
         if problem:
             break
@@ -1054,6 +1061,12 @@ try:
             continue
         if not OKLINE.match(line):
             problem = 'replacement text may only use printable ASCII outside comments'
+            break
+        # Quotes are refused too (chr() because this code sits inside a quoted
+        # shell string): after a quoted value compose reads the next statement
+        # from the same line, where LINE cannot find it.
+        if chr(34) in line or chr(39) in line:
+            problem = 'replacement text may not use quotes outside comments'
             break
         found = LINE.match(line)
         if not found:
@@ -1105,18 +1118,28 @@ if echo "$COMMAND" | grep -Eq '(^| )(up|restart)( |$)'; then
         # sre_mcp_server.py.
         VERDICT=$(python3 -c "
 import sys, re
-LINE = re.compile(r'^[ \\t]*(?:export[ \\t]+)?DB_POOL_SIZE[ \\t]*[:=](.*)')
+# The last alternative matches a key with no value: compose fills that in from
+# its own environment, so it is treated as an assignment with an empty value.
+LINE = re.compile(r'^[ \\t]*(?:export[ \\t]+)?DB_POOL_SIZE[ \\t]*(?:[:=](.*)|\\r?\\Z)')
 SKIP = re.compile(r'^[ \\t]*(?:#.*)?\\Z')
 OKLINE = re.compile(r'^[\\t\\r\\x20-\\x7e]*\\Z')
 try:
-    text = open(sys.argv[1], encoding='utf-8').read()
+    # newline='' keeps a bare carriage return as one: default text mode turns it
+    # into a line break, which compose does not. Refused, as in sre_mcp_server.py.
+    text = open(sys.argv[1], encoding='utf-8', newline='').read()
     problem = ''
+    if '\\r' in text.replace('\\r\\n', ''):
+        problem = 'config/api-server.env has a carriage return that is not part of a line ending'
     for line in text.split('\\n'):
-        if SKIP.match(line) or OKLINE.match(line):
+        if problem or SKIP.match(line):
             continue
-        problem = 'config/api-server.env uses non-ASCII outside its comments'
-        break
-    values = [m.group(1).strip() for m in map(LINE.match, text.split('\\n')) if m]
+        if not OKLINE.match(line):
+            problem = 'config/api-server.env uses non-ASCII outside its comments'
+        # chr() because this code sits inside a quoted shell string. After a
+        # quoted value compose reads the next statement from the same line.
+        elif chr(34) in line or chr(39) in line:
+            problem = 'config/api-server.env uses quotes outside its comments'
+    values = [(m.group(1) or '').strip() for m in map(LINE.match, text.split('\\n')) if m]
     if not problem and len(values) > 1:
         problem = 'config/api-server.env assigns DB_POOL_SIZE ' + str(len(values)) + ' times'
     for raw in values:

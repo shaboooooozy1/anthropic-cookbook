@@ -624,14 +624,35 @@ _ENV_FILE_ALLOWED_LINE = re.compile(r"^[\t\r\x20-\x7e]*\Z")
 # is NOT a comment here. It fails the rule above instead, which is the safe side.
 _ENV_FILE_SKIPPABLE_LINE = re.compile(r"^[ \t]*(?:#.*)?\Z")
 
+# A carriage return is only understood as half of a "\r\n" line ending. A bare one is
+# refused rather than modelled, comments included, because its two readers disagree:
+# compose does not break a line on it but does strip it as leading whitespace, so
+# "\rDB_POOL_SIZE=1" is an assignment compose honours that the pattern below cannot see,
+# while Python's default text mode turns it into "\n". The second is why the file is
+# opened with newline="" wherever it is judged or rewritten.
+_BARE_CR = re.compile(r"\r(?!\n)")
+
+# compose only reads this file line by line while every value is unquoted. After a value
+# that opens with " or ' it resumes right behind the closing quote, on the same line or
+# several lines further down, so in
+#     DB_POOL_TIMEOUT="2" DB_POOL_SIZE=1
+# the second statement is an assignment compose honours and no line-anchored pattern can
+# find. Quoting is refused rather than parsed, as it already was on the DB_POOL_SIZE line
+# itself: with no quote outside a comment, a statement and a line are the same thing.
+_ENV_FILE_QUOTE = re.compile(r"[\"']")
+
 # compose honours "export KEY=v" (with any run of spaces or tabs) and godotenv's
-# "KEY: v" form as well as "KEY=v".
-_DB_POOL_SIZE_LINE = re.compile(r"^[ \t]*(?:export[ \t]+)?DB_POOL_SIZE[ \t]*[:=](.*)")
+# "KEY: v" form as well as "KEY=v". A key with no separator at all is honoured too: it
+# takes its value from the environment compose itself runs in, which this guard cannot
+# see, so that form is matched as an assignment whose value is empty.
+_DB_POOL_SIZE_LINE = re.compile(r"^[ \t]*(?:export[ \t]+)?DB_POOL_SIZE[ \t]*(?:[:=](.*)|\r?\Z)")
 
 
 def _db_pool_sizes_in(text: str) -> list[str]:
     """Return every raw DB_POOL_SIZE value assigned in text, in file order."""
-    return [m.group(1).strip() for m in map(_DB_POOL_SIZE_LINE.match, text.split("\n")) if m]
+    return [
+        (m.group(1) or "").strip() for m in map(_DB_POOL_SIZE_LINE.match, text.split("\n")) if m
+    ]
 
 
 def _env_file_problem(text: str) -> str | None:
@@ -640,18 +661,26 @@ def _env_file_problem(text: str) -> str | None:
     Fails closed: what is not understood is refused rather than parsed. Lines are split
     on "\n" only and never with str.splitlines(), which also breaks on \x0b, \x0c,
     \x1c-\x1e and U+2028 where compose does not — a value containing one of those read
-    as two clean lines and hid an unparseable value. A lone "\r" is likewise not a
-    break; a trailing one is stripped with the rest of the whitespace, as compose does.
+    as two clean lines and hid an unparseable value. A "\r" is accepted only as part of
+    a "\r\n" line ending, where it is stripped with the rest of the whitespace as
+    compose does; a bare one is refused (see _BARE_CR), so text must reach this function
+    without newline translation. Quotes are refused outside comments, because a quoted
+    value is where compose stops reading line by line (see _ENV_FILE_QUOTE).
     More than one assignment is refused outright rather than leaning on compose's
     last-one-wins precedence. A value that will not parse as a plain integer is a
     problem in its own right: infra_setup.py reads it with int(), so the container
-    fails at startup.
+    fails at startup. A bare "DB_POOL_SIZE" line counts as an assignment with an empty
+    value, so it is refused on the same ground.
     """
+    if _BARE_CR.search(text):
+        return f"{ENV_FILE} has a carriage return that is not part of a line ending"
     for line in text.split("\n"):
         if _ENV_FILE_SKIPPABLE_LINE.match(line):
             continue
         if not _ENV_FILE_ALLOWED_LINE.match(line):
             return f"{ENV_FILE} may only use printable ASCII outside its comments"
+        if _ENV_FILE_QUOTE.search(line):
+            return f"{ENV_FILE} may not use quotes outside its comments"
     values = _db_pool_sizes_in(text)
     if len(values) > 1:
         return f"{ENV_FILE} assigns DB_POOL_SIZE {len(values)} times"
@@ -2208,7 +2237,12 @@ async def edit_config_file(path: str, old_value: str, new_value: str) -> dict[st
                 "isError": True,
             }
 
-        with open(full_path) as f:
+        # newline="" on the read and on the write below: the guard has to judge the bytes
+        # compose will read, and the write must leave every byte outside the replacement
+        # alone. Default text mode turns a bare "\r" into "\n" on read, so rewriting the
+        # file promoted text that was inert on disk ("# note\rDB_POOL_SIZE=1") to a line
+        # of its own.
+        with open(full_path, newline="") as f:
             content = f.read()
 
         if old_value not in content:
@@ -2250,7 +2284,7 @@ async def edit_config_file(path: str, old_value: str, new_value: str) -> dict[st
                     "isError": True,
                 }
 
-        with open(full_path, "w") as f:
+        with open(full_path, "w", newline="") as f:
             f.write(new_content)
 
         return {
@@ -2410,7 +2444,11 @@ async def run_shell_command(command: str) -> dict[str, Any]:
         if {"up", "restart"} & set(args):
             env_path = PROJECT_ROOT / ENV_FILE
             if env_path.is_file():
-                problem = _env_file_problem(env_path.read_text())
+                # newline="" for the reason given in edit_config_file: read in default
+                # text mode, "DB_POOL_SIZE=50\r0" on disk looked like a clean 50 here
+                # while compose handed the container "50\r0".
+                with open(env_path, newline="") as f:
+                    problem = _env_file_problem(f.read())
                 if problem:
                     return {
                         "content": [
