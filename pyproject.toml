@@ -6,7 +6,7 @@ dependencies = [
     "anthropic>=2.0.0",
     "claude-agent-sdk>=0.2.168",
     "ipykernel>=7.1.0",
-    "notebook>=7.4.7",
+    "notebook>=7.6.5",
     "numpy>=2.3.4",
     "pandas>=2.3.3",
     "jupyter>=1.1.1",
@@ -16,8 +16,8 @@ dependencies = [
     "networkx>=3.6.1",
     "matplotlib>=3.10.8",
     "requests>=2.32.5",
-    "pymongo>=4.17.0",
-    "pyjwt>=2.10.0",
+    "pymongo>=4.18.3",
+    "pyjwt>=2.14.0",
 ]
 
 [build-system]
@@ -30,7 +30,7 @@ dev = [
     "pytest>=8.3.3",
     "nbval>=0.11.0",
     "pre-commit>=3.8.0",
-    "nbconvert>=7.16.0",
+    "nbconvert>=7.17.2",
     "pyyaml>=6.0.3",
     "tox>=4.32.0",
     "tox-uv>=1.29.0",
